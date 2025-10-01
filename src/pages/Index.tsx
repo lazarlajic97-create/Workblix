@@ -302,7 +302,7 @@ const Index = () => {
               </Button>
             </div>
             <p className="text-sm mt-6 opacity-75">
-              Keine Kreditkarte erforderlich • 3 Bewerbungen kostenlos • Jederzeit kündbar
+              Keine Kreditkarte erforderlich • 1 manuelle Bewerbung kostenlos • Jederzeit kündbar
             </p>
           </div>
         </div>
