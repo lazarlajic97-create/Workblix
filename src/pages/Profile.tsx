@@ -1983,12 +1983,6 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
                 <Save className="h-4 w-4" />
                 <span>{saving ? 'Speichern...' : 'Profil speichern'}</span>
               </Button>
-              <Button onClick={testSave} variant="outline" disabled={saving} className="flex items-center space-x-2">
-                <span>Test Save (Minimal)</span>
-              </Button>
-              <Button onClick={debugCheck} variant="secondary" disabled={saving} className="flex items-center space-x-2">
-                <span>Debug Check</span>
-              </Button>
             </div>
           </div>
 
