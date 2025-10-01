@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 140 15% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 140 15% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 140 15% 15%;
+
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 120 60% 95%;
+    --secondary-foreground: 140 15% 15%;
+
+    --muted: 120 60% 97%;
+    --muted-foreground: 140 10% 45%;
+
+    --accent: 120 60% 90%;
+    --accent-foreground: 140 15% 15%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 120 30% 88%;
+    --input: 120 30% 88%;
+    --ring: 142 76% 36%;
+
+    --radius: 0.5rem;
+
+    /* Premium gradients and shadows for modern design */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(142 76% 45%));
+    --gradient-hero: linear-gradient(135deg, hsl(var(--primary) / 0.05), hsl(var(--secondary) / 0.8));
+    --gradient-card: linear-gradient(145deg, hsl(var(--card)), hsl(var(--card) / 0.8));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(var(--secondary)));
+    --shadow-soft: 0 2px 8px -2px hsl(var(--primary) / 0.1);
+    --shadow-medium: 0 4px 16px -4px hsl(var(--primary) / 0.15);
+    --shadow-strong: 0 8px 32px -8px hsl(var(--primary) / 0.2);
+    --shadow-premium: 0 20px 60px -10px hsl(var(--primary) / 0.15);
+    --glow-primary: 0 0 40px hsl(var(--primary) / 0.2);
+    
+    /* Hero section enhancements */
+    --hero-gradient: linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(214 100% 50% / 0.1), hsl(280 100% 70% / 0.1));
+    --text-gradient: linear-gradient(135deg, hsl(var(--foreground)), hsl(var(--primary)), hsl(214 100% 50%));
+    --button-gradient: linear-gradient(135deg, hsl(var(--primary)), hsl(214 100% 50%), hsl(280 100% 70%));
+    --glass-effect: rgba(255, 255, 255, 0.1);
+    --grid-pattern: radial-gradient(circle at 1px 1px, hsl(var(--primary) / 0.1) 1px, transparent 0);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 140 15% 8%;
+    --foreground: 0 0% 95%;
+
+    --card: 140 15% 10%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 140 15% 10%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 142 76% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 140 15% 15%;
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 140 15% 15%;
+    --muted-foreground: 140 10% 65%;
+
+    --accent: 140 15% 18%;
+    --accent-foreground: 0 0% 95%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 140 15% 18%;
+    --input: 140 15% 18%;
+    --ring: 142 76% 45%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+
+  /* Modern animations and transitions */
+  .animate-fade-in {
+    @apply animate-in fade-in duration-500;
+  }
+  
+  .animate-slide-up {
+    @apply animate-in slide-in-from-bottom-4 duration-500;
+  }
+  
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+  
+  .glass-effect {
+    @apply bg-white/80 backdrop-blur-md border border-white/20;
+  }
+  
+  .dark .glass-effect {
+    @apply bg-slate-900/80 border-slate-700/20;
+  }
+  
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent;
+  }
+  
+  .button-glow {
+    @apply shadow-lg shadow-primary/25 transition-all duration-300;
+  }
+  
+  .button-glow:hover {
+    @apply shadow-xl shadow-primary/40 scale-105;
+  }
+  
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-medium hover:-translate-y-1;
+  }
+  
+  .premium-card {
+    @apply bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl p-6 transition-all duration-300 hover:shadow-strong hover:-translate-y-2 hover:bg-card;
+  }
+  
+  .hero-glow {
+    @apply shadow-2xl shadow-primary/10;
+  }
+  
+  .step-number {
+    @apply w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary/80 text-primary-foreground font-bold text-lg flex items-center justify-center shadow-lg;
+  }
+  
+  .testimonial-card {
+    @apply bg-card/90 backdrop-blur-sm border border-border/30 rounded-2xl p-6 transition-all duration-500 hover:shadow-premium hover:scale-105;
+  }
+
+  /* New Hero Section Styles */
+  .bg-grid-pattern {
+    background-image: var(--grid-pattern);
+    background-size: 50px 50px;
+  }
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(200%); }
+  }
+
+  .animate-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .animate-shimmer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.2),
+      transparent
+    );
+    transform: translateX(-100%);
+    animation: shimmer 2s infinite;
+  }
+
+  @keyframes gradient-shift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  .animate-gradient-shift {
+    background-size: 200% 200%;
+    animation: gradient-shift 8s ease infinite;
+  }
+}
