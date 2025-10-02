@@ -32,6 +32,9 @@ export const ChicagoTemplate: React.FC<ChicagoTemplateProps> = ({ profile }) => 
       padding: '25px',
       boxSizing: 'border-box' as const,
       borderRight: '2px solid #222',
+      overflow: 'hidden',
+      wordWrap: 'break-word' as const,
+      wordBreak: 'break-word' as const,
     },
     sidebarH3: {
       fontSize: '1em',
@@ -64,6 +67,9 @@ export const ChicagoTemplate: React.FC<ChicagoTemplateProps> = ({ profile }) => 
       width: '72%',
       padding: '30px',
       boxSizing: 'border-box' as const,
+      overflow: 'hidden',
+      wordWrap: 'break-word' as const,
+      wordBreak: 'break-word' as const,
     },
     name: {
       fontSize: '2em',

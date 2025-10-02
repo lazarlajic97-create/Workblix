@@ -567,7 +567,7 @@ export default function Generate() {
           {isGenerationComplete && generatedApplication && (
             <Card className="mb-8 border-green-200 bg-green-50/50">
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center space-x-3">
                     <div className="bg-green-100 text-green-700 p-3 rounded-lg">
                       <FileText className="h-6 w-6" />
@@ -579,17 +579,17 @@ export default function Generate() {
                       </CardDescription>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {!isEditing ? (
                       <>
-                        <Button onClick={() => setIsEditing(true)} size="sm" variant="outline" className="border-blue-300 hover:bg-blue-100">
-                          <Edit className="h-4 w-4 mr-2" />
-                          Bearbeiten
+                        <Button onClick={() => setIsEditing(true)} size="sm" variant="outline" className="border-blue-300 hover:bg-blue-100 flex-1 sm:flex-none">
+                          <Edit className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Bearbeiten</span>
                         </Button>
-                        <div className="relative">
-                          <Button onClick={downloadAsTXT} size="sm" variant="outline" className="border-green-300 hover:bg-green-100">
-                            <Download className="h-4 w-4 mr-2" />
-                            TXT
+                        <div className="relative flex-1 sm:flex-none">
+                          <Button onClick={downloadAsTXT} size="sm" variant="outline" className="border-green-300 hover:bg-green-100 w-full">
+                            <Download className="h-4 w-4 sm:mr-2" />
+                            <span>TXT</span>
                           </Button>
                           {userPlan === 'pro' && (
                             <Badge className="absolute -top-2 -right-2 bg-yellow-500 text-yellow-900 text-xs">
@@ -597,10 +597,10 @@ export default function Generate() {
                             </Badge>
                           )}
                         </div>
-                        <div className="relative">
-                          <Button onClick={downloadAsPDF} size="sm" className="bg-green-600 hover:bg-green-700">
-                            <Download className="h-4 w-4 mr-2" />
-                            PDF
+                        <div className="relative flex-1 sm:flex-none">
+                          <Button onClick={downloadAsPDF} size="sm" className="bg-green-600 hover:bg-green-700 w-full">
+                            <Download className="h-4 w-4 sm:mr-2" />
+                            <span>PDF</span>
                           </Button>
                           {userPlan === 'pro' && (
                             <Badge className="absolute -top-2 -right-2 bg-yellow-500 text-yellow-900 text-xs">
@@ -611,13 +611,13 @@ export default function Generate() {
                       </>
                     ) : (
                       <>
-                        <Button onClick={saveEdits} size="sm" className="bg-green-600 hover:bg-green-700">
-                          <Save className="h-4 w-4 mr-2" />
-                          Speichern
+                        <Button onClick={saveEdits} size="sm" className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none">
+                          <Save className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Speichern</span>
                         </Button>
-                        <Button onClick={cancelEditing} size="sm" variant="outline" className="border-gray-300">
-                          <X className="h-4 w-4 mr-2" />
-                          Abbrechen
+                        <Button onClick={cancelEditing} size="sm" variant="outline" className="border-gray-300 flex-1 sm:flex-none">
+                          <X className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Abbrechen</span>
                         </Button>
                       </>
                     )}
@@ -641,14 +641,14 @@ export default function Generate() {
                 </div>
                 {!isEditing && (
                   <div className="mt-6 p-4 bg-green-50 rounded-lg border border-green-200">
-                    <div className="flex justify-between items-center mb-3">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-3">
                       <div>
                         <h4 className="font-semibold text-green-900">Bewerbung versandfertig</h4>
                         <p className="text-sm text-green-700">
                           Generiert am {new Date().toLocaleDateString('de-DE')} um {new Date().toLocaleTimeString('de-DE')}
                         </p>
                       </div>
-                      <Button variant="outline" size="sm" onClick={generateApplication} disabled={isGenerating} className="border-green-300 hover:bg-green-100">
+                      <Button variant="outline" size="sm" onClick={generateApplication} disabled={isGenerating} className="border-green-300 hover:bg-green-100 w-full sm:w-auto">
                         {isGenerating ? 'Wird generiert...' : 'Neu generieren'}
                       </Button>
                     </div>

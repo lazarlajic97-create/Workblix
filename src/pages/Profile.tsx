@@ -1981,7 +1981,8 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
             <div className="flex gap-2">
               <Button onClick={saveProfile} disabled={saving} className="flex items-center space-x-2">
                 <Save className="h-4 w-4" />
-                <span>{saving ? 'Speichern...' : 'Profil speichern'}</span>
+                <span className="hidden sm:inline">{saving ? 'Speichern...' : 'Profil speichern'}</span>
+                <span className="sm:hidden">{saving ? 'Speichern...' : 'Speichern'}</span>
               </Button>
             </div>
           </div>
@@ -2247,7 +2248,7 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
             {/* Work Experience */}
             <Card className="shadow-medium">
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <CardTitle className="flex items-center space-x-3">
                       <div className="p-2 bg-blue-100 rounded-lg">
@@ -2255,11 +2256,11 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
                       </div>
                       <span>Berufserfahrung</span>
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="hidden sm:block">
                       Deine bisherigen Positionen und Erfahrungen
                     </CardDescription>
                   </div>
-                  <Button onClick={addExperience} size="sm" className="flex items-center space-x-2">
+                  <Button onClick={addExperience} size="sm" className="flex items-center justify-center space-x-2 w-full sm:w-auto">
                     <Plus className="h-4 w-4" />
                     <span>Hinzufügen</span>
                   </Button>
@@ -2301,17 +2302,17 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Startdatum</Label>
+                        <Label>Startdatum (Monat/Jahr)</Label>
                         <Input
-                          type="date"
+                          type="month"
                           value={exp.startDate}
                           onChange={(e) => updateExperience(exp.id, 'startDate', e.target.value)}
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Enddatum</Label>
+                        <Label>Enddatum (Monat/Jahr)</Label>
                         <Input
-                          type="date"
+                          type="month"
                           value={exp.endDate}
                           disabled={exp.current}
                           onChange={(e) => updateExperience(exp.id, 'endDate', e.target.value)}
@@ -2356,7 +2357,7 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
             {/* Education */}
             <Card className="shadow-medium">
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <CardTitle className="flex items-center space-x-3">
                       <div className="p-2 bg-green-100 rounded-lg">
@@ -2364,11 +2365,11 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
                       </div>
                       <span>Bildungsweg</span>
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="hidden sm:block">
                       Deine Ausbildung, Studium und Weiterbildungen
                     </CardDescription>
                   </div>
-                  <Button onClick={addEducation} size="sm" className="flex items-center space-x-2">
+                  <Button onClick={addEducation} size="sm" className="flex items-center justify-center space-x-2 w-full sm:w-auto">
                     <Plus className="h-4 w-4" />
                     <span>Hinzufügen</span>
                   </Button>
@@ -2419,17 +2420,17 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Startdatum</Label>
+                        <Label>Startdatum (Monat/Jahr)</Label>
                         <Input
-                          type="date"
+                          type="month"
                           value={edu.startDate}
                           onChange={(e) => updateEducation(edu.id, 'startDate', e.target.value)}
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Enddatum</Label>
+                        <Label>Enddatum (Monat/Jahr)</Label>
                         <Input
-                          type="date"
+                          type="month"
                           value={edu.endDate}
                           onChange={(e) => updateEducation(edu.id, 'endDate', e.target.value)}
                           disabled={edu.ongoing}
@@ -2473,7 +2474,7 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
             {/* Skills */}
             <Card className="shadow-medium">
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <CardTitle className="flex items-center space-x-3">
                       <div className="p-2 bg-purple-100 rounded-lg">
@@ -2481,11 +2482,11 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
                       </div>
                       <span>Fähigkeiten</span>
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="hidden sm:block">
                       Deine fachlichen und persönlichen Kompetenzen
                     </CardDescription>
                   </div>
-                  <Button onClick={addSkill} size="sm" className="flex items-center space-x-2">
+                  <Button onClick={addSkill} size="sm" className="flex items-center justify-center space-x-2 w-full sm:w-auto">
                     <Plus className="h-4 w-4" />
                     <span>Hinzufügen</span>
                   </Button>
@@ -2536,7 +2537,7 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
             {/* Languages */}
             <Card className="shadow-medium">
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <CardTitle className="flex items-center space-x-3">
                       <div className="p-2 bg-orange-100 rounded-lg">
@@ -2544,11 +2545,11 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
                       </div>
                       <span>Sprachen</span>
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="hidden sm:block">
                       Deine Sprachkenntnisse nach dem europäischen Referenzrahmen
                     </CardDescription>
                   </div>
-                  <Button onClick={addLanguage} size="sm" className="flex items-center space-x-2">
+                  <Button onClick={addLanguage} size="sm" className="flex items-center justify-center space-x-2 w-full sm:w-auto">
                     <Plus className="h-4 w-4" />
                     <span>Hinzufügen</span>
                   </Button>
@@ -2813,7 +2814,7 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
 
             {/* Save Button */}
             <div className="flex justify-center pt-6">
-              <Button onClick={saveProfile} disabled={saving} size="lg" className="px-12">
+              <Button onClick={saveProfile} disabled={saving} size="lg" className="px-12 w-full sm:w-auto">
                 <Save className="h-5 w-5 mr-2" />
                 {saving ? 'Speichern...' : 'Profil speichern'}
               </Button>
