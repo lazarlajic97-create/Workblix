@@ -16,6 +16,7 @@ import {
   Zap, Star, Calendar, Edit3, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
+import TwoStepApplicationFlow from '@/components/TwoStepApplicationFlow';
 
 interface Profile {
   plan: string;
@@ -34,6 +35,7 @@ export default function Dashboard() {
   const [showManualForm, setShowManualForm] = useState(false);
   const [jobPostingText, setJobPostingText] = useState('');
   const [isProcessingText, setIsProcessingText] = useState(false);
+  const [activeTab, setActiveTab] = useState<'quick' | 'twoStep'>('quick');
 
   useEffect(() => {
     if (!user) {
@@ -530,13 +532,41 @@ export default function Dashboard() {
         <div className="mb-10 animate-slide-up">
           <h2 className="text-2xl font-bold mb-2">Erstelle deine perfekte Bewerbung</h2>
           <p className="text-muted-foreground text-lg">
-            Füge einfach eine Job-URL ein und lass unsere KI eine personalisierte Bewerbung für dich erstellen.
+            Wähle deinen bevorzugten Workflow für die Bewerbungserstellung.
           </p>
+        </div>
+
+        {/* Tab Selector */}
+        <div className="flex gap-4 mb-8">
+          <Button
+            variant={activeTab === 'quick' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('quick')}
+            className="flex-1"
+            size="lg"
+          >
+            <Zap className="h-5 w-5 mr-2" />
+            Quick Scanner
+            <Badge variant="secondary" className="ml-2 text-xs">BETA</Badge>
+          </Button>
+          <Button
+            variant={activeTab === 'twoStep' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('twoStep')}
+            className="flex-1"
+            size="lg"
+          >
+            <FileText className="h-5 w-5 mr-2" />
+            2-Schritt Flow
+            <Badge variant="secondary" className="ml-2 text-xs">NEU</Badge>
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-8">
+            {activeTab === 'twoStep' ? (
+              <TwoStepApplicationFlow />
+            ) : (
+              <>
             {/* Enhanced New Application Card */}
             <Card className="shadow-medium border-0 card-hover animate-slide-up" style={{ animationDelay: '0.1s' }}>
               <CardHeader className="pb-4">
@@ -547,6 +577,9 @@ export default function Dashboard() {
                         <Target className="h-6 w-6 text-primary" />
                       </div>
                       <span>Neue Bewerbung erstellen</span>
+                      <Badge variant="secondary" className="ml-2 text-xs px-2 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        BETA
+                      </Badge>
                     </CardTitle>
                     <CardDescription className="mt-2 text-base">
                       Füge eine Job-URL ein und erhalte in Sekunden eine maßgeschneiderte Bewerbung
@@ -627,6 +660,9 @@ export default function Dashboard() {
                         <Edit3 className="h-6 w-6 text-primary" />
                       </div>
                       <span>Job-Details manuell eingeben</span>
+                      {/*<Badge variant="secondary" className="ml-2 text-xs px-2 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        BETA
+                      </Badge>*/}
                     </CardTitle>
                     <CardDescription className="mt-2 text-base">
                       Kopiere einfach den gesamten Stellenausschreibungs-Text (z.B. von LinkedIn) und lass die KI ihn analysieren
@@ -720,6 +756,8 @@ Wir bieten:
                 </CardContent>
               )}
             </Card>
+              </>
+            )}
 
             {/* Enhanced Recent Activities with Complete Activity Tracking */}
             <Card className="shadow-medium border-0 card-hover animate-slide-up" style={{ animationDelay: '0.2s' }}>

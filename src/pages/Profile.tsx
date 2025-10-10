@@ -2738,45 +2738,16 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
                     )}
 
                     {/* Action Buttons */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="flex justify-center">
                       <Button 
-                        onClick={previewCV}
-                        disabled={generatingCV}
-                        variant="outline"
-                        size="lg"
-                        className="h-14 flex flex-col items-center justify-center space-y-1"
-                      >
-                        <Eye className="h-5 w-5" />
-                        <span>Vorschau</span>
-                      </Button>
-                      
-                      <Button 
-                        onClick={downloadAsPDF}
+                        onClick={downloadAsTXT}
                         disabled={generatingCV}
                         size="lg"
-                        className="h-14 flex flex-col items-center justify-center space-y-1 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
+                        className="h-14 px-8 flex items-center justify-center space-x-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
                       >
-                        <Download className="h-5 w-5" />
-                        <span>PDF Download</span>
+                        <FileText className="h-5 w-5" />
+                        <span>TXT Download</span>
                       </Button>
-
-                      <div className="relative">
-                        <Button 
-                          onClick={downloadAsPDF}
-                          disabled={generatingCV || userPlan === 'free'}
-                          variant="outline"
-                          size="lg"
-                          className="w-full h-14 flex flex-col items-center justify-center space-y-1"
-                        >
-                          <Download className="h-5 w-5" />
-                          <span>DOCX Download</span>
-                        </Button>
-                        {userPlan === 'free' && (
-                          <div className="absolute inset-0 bg-black/5 rounded flex items-center justify-center">
-                            <Badge variant="secondary" className="text-xs">PRO Feature</Badge>
-                          </div>
-                        )}
-                      </div>
                     </div>
 
                     {generatingCV && (

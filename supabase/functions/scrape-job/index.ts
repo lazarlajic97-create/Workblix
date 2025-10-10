@@ -729,6 +729,12 @@ const extractJobData = (html: string, url: string): JobData => {
     bewerbungsprozess: bewerbungsprozess ? 'FOUND' : 'NOT FOUND'
   });
 
+  // Debug: Check extracted fields
+  console.log('[Debug] Extracted fields check:');
+  console.log('  - Jobtitel:', jobtitel || 'MISSING');
+  console.log('  - Arbeitgeber:', arbeitgeber || 'MISSING');
+  console.log('  - Beschreibung length:', beschreibung ? beschreibung.length : 0);
+
   // Validate essential data
   if (!jobtitel || jobtitel.length < 3) {
     throw new Error('INCOMPLETE_SOURCE: Job title not found or too short');
@@ -738,7 +744,7 @@ const extractJobData = (html: string, url: string): JobData => {
     throw new Error('INCOMPLETE_SOURCE: Company name not found');
   }
   
-  if (!beschreibung || beschreibung.length < 50) {
+  if (!beschreibung || beschreibung.length < 20) {
     throw new Error('INCOMPLETE_SOURCE: Job description too short or missing');
   }
 
@@ -918,6 +924,12 @@ const extractJobDataFromText = async (rawText: string): Promise<JobData> => {
     }
   }
   
+  // Debug: Check extracted fields (text extraction)
+  console.log('[Debug] Text extraction fields check:');
+  console.log('  - Jobtitel:', jobtitel || 'MISSING');
+  console.log('  - Arbeitgeber:', arbeitgeber || 'MISSING');
+  console.log('  - Beschreibung length:', beschreibung ? beschreibung.length : 0);
+  
   // Validate essential data
   if (!jobtitel || jobtitel.length < 3) {
     throw new Error('INCOMPLETE_SOURCE: Job title not found or too short');
@@ -949,6 +961,493 @@ const extractJobDataFromText = async (rawText: string): Promise<JobData> => {
   };
 };
 
+/**
+ * GPT-powered semantic extraction fallback for unstructured job listings
+ * @param rawContent - Raw HTML or text content
+ * @param userCity - Optional user city to override location
+ * @returns Promise<JobData> - Extracted job data
+ * @throws Error if GPT extraction fails or returns incomplete data
+ */
+async function extractJobDataViaGPT(rawContent: string, userCity?: string): Promise<any> {
+  const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+  
+  if (!openAIApiKey) {
+    throw new Error('OPENAI_API_KEY not configured');
+  }
+  
+  console.log(`[ScrapeJob] ${new Date().toISOString()} — Local extraction failed — using GPT semantic parser`);
+  
+  // Truncate content to prevent excessive costs
+  const MAX_GPT_CHARS = 15000;
+  let plainText = stripHtmlTags(rawContent);
+  
+  if (plainText.length > MAX_GPT_CHARS) {
+    console.log(`[ScrapeJob] ${new Date().toISOString()} — Truncating text for GPT (${plainText.length} → ${MAX_GPT_CHARS} chars)`);
+    plainText = plainText.substring(0, MAX_GPT_CHARS);
+  }
+  
+  const gptPrompt = `You are a precise information extractor. 
+Extract the following fields from this raw job listing text or HTML:
+- jobtitel (position title)
+- arbeitgeber (employer/company name)
+- beschreibung (main job description, short but detailed)
+- ort (location city, if visible)
+- adresse (full address if available)
+- plz (postal code if available)
+- anforderungen (requirements as array of strings, summarized)
+- bewerbungsprozess (application process instructions if mentioned)
+- vertrag (contract type: vollzeit, teilzeit, freelance, etc.)
+
+Rules:
+- Respond ONLY in valid JSON format.
+- Omit fields that are missing rather than guessing.
+- Do not invent any data.
+- For anforderungen, return an array of strings.
+- Keep beschreibung concise but informative (2-3 sentences).
+
+Example output:
+{
+  "jobtitel": "Senior Software Engineer",
+  "arbeitgeber": "TechCorp GmbH",
+  "beschreibung": "We seek an experienced engineer to lead our backend team...",
+  "ort": "Berlin",
+  "anforderungen": ["5+ years experience", "Python expertise", "Team leadership"]
+}`;
+
+  try {
+    const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0.2,
+        max_tokens: 1000,
+        messages: [
+          { role: 'system', content: 'You are a structured data extractor. Always respond with valid JSON only.' },
+          { role: 'user', content: gptPrompt + '\n\nRAW CONTENT:\n' + plainText }
+        ],
+        response_format: { type: 'json_object' }
+      }),
+    });
+
+    if (!gptResponse.ok) {
+      throw new Error(`OpenAI API returned ${gptResponse.status}: ${gptResponse.statusText}`);
+    }
+
+    const gptData = await gptResponse.json();
+    let content = gptData?.choices?.[0]?.message?.content?.trim() || '';
+    
+    if (!content) {
+      throw new Error('GPT returned empty response');
+    }
+
+    // Sanitize markdown code blocks (GPT sometimes wraps JSON in ```json ... ```)
+    content = content.replace(/^```(json)?|```$/g, '').trim();
+
+    let gptJson;
+    try {
+      gptJson = JSON.parse(content);
+    } catch (err) {
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — GPT output not valid JSON:`, content.substring(0, 200));
+      throw new Error('GPT output parsing failed');
+    }
+
+    // Validate essential fields
+    if (!gptJson?.jobtitel || !gptJson?.arbeitgeber) {
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — GPT extraction incomplete (missing title or employer)`);
+      throw new Error('GPT extraction incomplete');
+    }
+
+    console.log(`[ScrapeJob] ${new Date().toISOString()} — ✅ GPT extraction fallback triggered successfully`);
+
+    // Format and normalize data
+    const currentDate = new Date();
+    const formattedDate = `${String(currentDate.getDate()).padStart(2, '0')}.${String(currentDate.getMonth() + 1).padStart(2, '0')}.${currentDate.getFullYear()}`;
+
+    return {
+      jobtitel: gptJson.jobtitel.trim(),
+      arbeitgeber: gptJson.arbeitgeber.trim(),
+      ort: userCity?.trim() || gptJson.ort?.trim() || '',
+      adresse: gptJson.adresse?.trim() || '',
+      datum: userCity ? `${userCity.trim()}, ${formattedDate}` : formattedDate,
+      plz: gptJson.plz?.trim() || undefined,
+      vertrag: gptJson.vertrag?.trim() || undefined,
+      beschreibung: gptJson.beschreibung?.trim() || '',
+      anforderungen: Array.isArray(gptJson.anforderungen) ? gptJson.anforderungen.slice(0, 10) : [],
+      bewerbungsprozess: gptJson.bewerbungsprozess?.trim() || undefined
+    };
+
+  } catch (error) {
+    console.error(`[ScrapeJob] ${new Date().toISOString()} — GPT extraction failed:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Fetches HTML content from a URL with intelligent fallback mechanisms
+ * @param url - The URL to fetch
+ * @param supabaseClient - Optional Supabase client for caching
+ * @returns Promise<string> - The HTML content
+ * @throws Error with code prefix (FETCH_ERROR, BLOCKED, TIMEOUT)
+ */
+async function fetchHTML(url: string, supabaseClient?: any): Promise<string> {
+  const MAX_SIZE = 2 * 1024 * 1024; // 2MB limit
+  const TIMEOUT = 15000; // 15 seconds
+  const CACHE_BUCKET = 'scraper_cache';
+  const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+  
+  // Generate cache key from URL
+  async function getCacheKey(url: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(url);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  
+  // Try to fetch from cache
+  async function fetchFromCache(): Promise<string | null> {
+    if (!supabaseClient) return null;
+    
+    try {
+      const cacheKey = await getCacheKey(url);
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — Checking cache for ${cacheKey}`);
+      
+      const { data, error } = await supabaseClient.storage
+        .from(CACHE_BUCKET)
+        .download(cacheKey);
+      
+      if (error || !data) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Cache miss`);
+        return null;
+      }
+      
+      const text = await data.text();
+      const cached = JSON.parse(text);
+      
+      // Check if cache is still valid (< 24h old)
+      const cacheAge = Date.now() - cached.timestamp;
+      if (cacheAge < CACHE_DURATION_MS) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Cache hit (age: ${Math.round(cacheAge / 1000 / 60)}m)`);
+        return cached.html;
+      }
+      
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — Cache expired (age: ${Math.round(cacheAge / 1000 / 60 / 60)}h)`);
+      return null;
+    } catch (error) {
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — Cache check failed:`, error);
+      return null;
+    }
+  }
+  
+  // Save to cache
+  async function saveToCache(html: string): Promise<void> {
+    if (!supabaseClient) return;
+    
+    try {
+      const cacheKey = await getCacheKey(url);
+      const cacheData = {
+        url,
+        html,
+        timestamp: Date.now()
+      };
+      
+      const blob = new Blob([JSON.stringify(cacheData)], { type: 'application/json' });
+      
+      await supabaseClient.storage
+        .from(CACHE_BUCKET)
+        .upload(cacheKey, blob, { upsert: true });
+      
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — Cached HTML (${html.length} chars)`);
+    } catch (error) {
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — Cache save failed:`, error);
+    }
+  }
+  
+  // Check cache first
+  const cachedHtml = await fetchFromCache();
+  if (cachedHtml) {
+    return cachedHtml;
+  }
+  
+  // Modern browser headers with Sec-Ch-Ua
+  const browserHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
+    'Accept-Encoding': 'gzip, deflate',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'DNT': '1',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Sec-Ch-Ua': '"Chromium";v="125"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"'
+  };
+  
+  // Add referer based on URL origin
+  try {
+    const urlObj = new URL(url);
+    browserHeaders['Referer'] = urlObj.origin;
+  } catch (e) {
+    console.log('Could not parse URL for referer:', e);
+  }
+  
+  /**
+   * Detects if HTML is blocked by Cloudflare, CAPTCHA, or anti-bot systems
+   * Returns the detected pattern for debugging
+   */
+  function isBlocked(html: string): { blocked: boolean; pattern?: string } {
+    const blockIndicators = [
+      { pattern: /cloudflare/i, name: 'Cloudflare' },
+      { pattern: /captcha/i, name: 'CAPTCHA' },
+      { pattern: /enable\s+javascript/i, name: 'JavaScript required' },
+      { pattern: /access\s+denied/i, name: 'Access denied' },
+      { pattern: /bot\s+detection/i, name: 'Bot detection' },
+      { pattern: /please\s+verify\s+you\s+are\s+human/i, name: 'Human verification' },
+      { pattern: /security\s+check/i, name: 'Security check' },
+      { pattern: /ray\s+id:/i, name: 'Cloudflare Ray ID' },
+      { pattern: /cf-browser-verification/i, name: 'Cloudflare verification' },
+      { pattern: /just\s+a\s+moment/i, name: 'Cloudflare challenge' },
+      { pattern: /checking\s+your\s+browser/i, name: 'Browser check' }
+    ];
+    
+    for (const indicator of blockIndicators) {
+      if (indicator.pattern.test(html)) {
+        return { blocked: true, pattern: indicator.name };
+      }
+    }
+    
+    return { blocked: false };
+  }
+  
+  /**
+   * Validates HTML content quality
+   */
+  function isValidHTML(html: string): { valid: boolean; reason?: string } {
+    if (!html || html.length < 500) {
+      return { valid: false, reason: `Too short (${html.length} chars)` };
+    }
+    
+    if (!/<html/i.test(html)) {
+      return { valid: false, reason: 'No <html> tag found' };
+    }
+    
+    // Check for malformed HTML by counting tags
+    const tagCount = html.split('<').length - 1;
+    if (tagCount < 50) {
+      return { valid: false, reason: `Malformed HTML (only ${tagCount} tags)` };
+    }
+    
+    const blockCheck = isBlocked(html);
+    if (blockCheck.blocked) {
+      return { valid: false, reason: `Blocked: ${blockCheck.pattern}` };
+    }
+    
+    return { valid: true };
+  }
+  
+  /**
+   * Attempt direct fetch with timeout
+   */
+  async function directFetch(): Promise<string> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
+    
+    try {
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — Attempting direct fetch`);
+      
+      const response = await fetch(url, {
+        headers: browserHeaders,
+        method: 'GET',
+        signal: controller.signal,
+        redirect: 'follow'
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      let html = await response.text();
+      
+      // Truncate if too large
+      if (html.length > MAX_SIZE) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Truncating HTML from ${html.length} to ${MAX_SIZE} bytes`);
+        html = html.substring(0, MAX_SIZE);
+      }
+      
+      return html;
+      
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        throw new Error(`TIMEOUT: Request timed out after ${TIMEOUT / 1000} seconds`);
+      }
+      
+      throw error;
+    }
+  }
+  
+  /**
+   * Fallback: Use Jina.ai Reader proxy with retry logic
+   */
+  async function proxyFetch(retryCount = 0): Promise<string> {
+    const MAX_RETRIES = 2;
+    const RETRY_DELAY = 1000; // 1 second
+    
+    const proxyUrl = `https://r.jina.ai/${encodeURIComponent(url)}`;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
+    
+    try {
+      if (retryCount === 0) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Attempting fallback via Jina.ai reader proxy`);
+      } else {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Proxy retry #${retryCount}`);
+      }
+      
+      const response = await fetch(proxyUrl, {
+        headers: {
+          'Accept': 'text/html',
+          'User-Agent': 'Mozilla/5.0 (compatible; JobFlow/1.0)'
+        },
+        signal: controller.signal,
+        redirect: 'follow'
+      });
+      
+      clearTimeout(timeoutId);
+      
+      // Retry on rate limit or server error
+      if ((response.status === 429 || response.status >= 500) && retryCount < MAX_RETRIES) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Proxy returned ${response.status}, retrying after ${RETRY_DELAY}ms`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return proxyFetch(retryCount + 1);
+      }
+      
+      if (!response.ok) {
+        throw new Error(`Proxy returned HTTP ${response.status}`);
+      }
+      
+      let html = await response.text();
+      
+      // Retry if response is too short
+      if (html.length < 500 && retryCount < MAX_RETRIES) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Proxy returned too-short HTML (${html.length} chars), retrying`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return proxyFetch(retryCount + 1);
+      }
+      
+      // Truncate if too large
+      if (html.length > MAX_SIZE) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Truncating proxy HTML from ${html.length} to ${MAX_SIZE} bytes`);
+        html = html.substring(0, MAX_SIZE);
+      }
+      
+      return html;
+      
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        throw new Error('TIMEOUT: Proxy request timed out');
+      }
+      
+      // Retry on network errors
+      if (retryCount < MAX_RETRIES && !error.message.includes('HTTP')) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Proxy error: ${error.message}, retrying`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return proxyFetch(retryCount + 1);
+      }
+      
+      throw error;
+    }
+  }
+  
+  // Main fetch logic with fallback and caching
+  try {
+    let html = await directFetch();
+    
+    const validation = isValidHTML(html);
+    
+    if (validation.valid) {
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — Direct fetch successful: ${html.length} chars`);
+      await saveToCache(html);
+      return html;
+    }
+    
+    // If blocked or invalid, try proxy fallback
+    console.log(`[ScrapeJob] ${new Date().toISOString()} — Direct fetch invalid: ${validation.reason}, trying proxy`);
+    html = await proxyFetch();
+    
+    const proxyValidation = isValidHTML(html);
+    if (proxyValidation.valid) {
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — Proxy fetch successful: ${html.length} chars`);
+      await saveToCache(html);
+      return html;
+    }
+    
+    throw new Error(`BLOCKED: Both direct and proxy fetch returned invalid content (${proxyValidation.reason})`);
+    
+  } catch (error) {
+    // Try proxy as last resort if direct fetch failed completely
+    if (error.message && !error.message.startsWith('BLOCKED') && !error.message.includes('Proxy returned')) {
+      try {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Direct fetch failed, attempting proxy fallback`);
+        const html = await proxyFetch();
+        
+        const validation = isValidHTML(html);
+        if (validation.valid) {
+          console.log(`[ScrapeJob] ${new Date().toISOString()} — Proxy fallback successful: ${html.length} chars`);
+          await saveToCache(html);
+          return html;
+        }
+        
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Proxy fallback invalid: ${validation.reason}`);
+      } catch (proxyError) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Proxy fallback failed:`, proxyError);
+      }
+    }
+    
+    // Format error message
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(`FETCH_ERROR: ${errorMsg}`);
+  }
+}
+
+// Optional: Placeholder for future Puppeteer rendering service
+// Uncomment and configure when deploying a separate rendering service
+/*
+async function renderServiceFetch(url: string): Promise<string> {
+  const RENDER_SERVICE_URL = Deno.env.get('RENDER_SERVICE_URL');
+  
+  if (!RENDER_SERVICE_URL) {
+    throw new Error('Render service not configured');
+  }
+  
+  const response = await fetch(`${RENDER_SERVICE_URL}?url=${encodeURIComponent(url)}`, {
+    headers: { 'Authorization': `Bearer ${Deno.env.get('RENDER_SERVICE_KEY')}` }
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Render service returned ${response.status}`);
+  }
+  
+  return await response.text();
+}
+*/
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -965,7 +1464,7 @@ serve(async (req) => {
     
     // Handle raw text processing
     if (rawText && rawText.trim()) {
-      console.log('Processing raw job text (length:', rawText.length, ')');
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — Processing raw job text (${rawText.length} chars)`);
       
       try {
         const jobData = await extractJobDataFromText(rawText);
@@ -998,7 +1497,7 @@ serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       } catch (extractError) {
-        console.error('Error extracting job data from text:', extractError);
+        console.error(`[ScrapeJob] ${new Date().toISOString()} — Error extracting job data from text:`, extractError);
         
         return new Response(
           JSON.stringify({ 
@@ -1018,7 +1517,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('Scraping job URL:', url);
+    console.log(`[ScrapeJob] ${new Date().toISOString()} — Scraping job URL: ${url}`);
 
     // Check if URL is from LinkedIn - LinkedIn blocks automated scraping
     if (url.includes('linkedin.com')) {
@@ -1032,150 +1531,218 @@ serve(async (req) => {
       );
     }
 
-    // Enhanced job page fetching with multiple strategies
+    // Fetch HTML using new robust fetchHTML utility with caching
     let html = '';
-    let lastError: Error | null = null;
-    
-    const baseHeaders = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-      'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
-      'Accept-Encoding': 'gzip, deflate, br',
-      'DNT': '1',
-      'Connection': 'keep-alive',
-      'Upgrade-Insecure-Requests': '1',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'none',
-      'Cache-Control': 'max-age=0'
-    };
-
-    // Try multiple fetch strategies
-    const strategies = [
-      // Strategy 1: Standard fetch
-      () => fetch(url, { 
-        headers: baseHeaders,
-        method: 'GET'
-      }),
+    try {
+      html = await fetchHTML(url, supabaseClient);
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — Fetched ${html.length} chars from ${url}`);
       
-      // Strategy 2: With referrer
-      () => fetch(url, { 
-        headers: { 
-          ...baseHeaders, 
-          'Referer': new URL(url).origin 
-        },
-        method: 'GET'
-      }),
-      
-      // Strategy 3: Simplified headers
-      () => fetch(url, { 
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; JobFlow/1.0; +https://jobflow.app)',
-          'Accept': 'text/html'
-        },
-        method: 'GET'
-      })
-    ];
-
-    for (let strategyIndex = 0; strategyIndex < strategies.length; strategyIndex++) {
-      try {
-        console.log(`Trying fetch strategy ${strategyIndex + 1} for URL:`, url);
-        
-        // Add delay between strategies
-        if (strategyIndex > 0) {
-          await new Promise(resolve => setTimeout(resolve, 2000 * strategyIndex));
-        }
-        
-        const response = await strategies[strategyIndex]();
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        html = await response.text();
-        
-        if (html.length < 500) {
-          throw new Error(`Response too short (${html.length} chars), likely blocked or empty`);
-        }
-        
-        console.log(`Strategy ${strategyIndex + 1} successful: fetched ${html.length} characters`);
-        break; // Success, exit strategy loop
-        
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`Strategy ${strategyIndex + 1} failed:`, lastError.message);
-        
-        // Don't retry for certain errors
-        if (lastError.message.includes('404') || lastError.message.includes('403')) {
-          console.log('Stopping retries due to client error');
-          break;
+      // Auto-fallback: if HTML is too short (<8000 chars), try text extraction
+      if (html.length < 8000) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — HTML too short (${html.length} chars) — forcing text extraction fallback`);
+        try {
+          const plainText = stripHtmlTags(html);
+          const textJobData = await extractJobDataFromText(plainText);
+          
+          // Validate that we got essential data
+          if (textJobData && textJobData.jobtitel && textJobData.arbeitgeber) {
+            console.log(`[ScrapeJob] ${new Date().toISOString()} — Text-based fallback successful`);
+            
+            // Override location with user's city if provided
+            if (userCity && userCity.trim()) {
+              textJobData.ort = userCity.trim();
+              const currentDate = new Date();
+              const formattedDate = `${String(currentDate.getDate()).padStart(2, '0')}.${String(currentDate.getMonth() + 1).padStart(2, '0')}.${currentDate.getFullYear()}`;
+              textJobData.datum = `${userCity.trim()}, ${formattedDate}`;
+            }
+            
+            return new Response(
+              JSON.stringify({ 
+                success: true, 
+                jobData: textJobData,
+                structuredData: {
+                  jobtitel: textJobData.jobtitel,
+                  arbeitgeber: textJobData.arbeitgeber,
+                  adresse: textJobData.adresse,
+                  ort: textJobData.ort,
+                  datum: textJobData.datum
+                },
+                message: 'Job data extracted via text fallback'
+              }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          } else {
+            console.log(`[ScrapeJob] ${new Date().toISOString()} — Text fallback incomplete (missing title or employer), trying HTML extraction`);
+          }
+        } catch (e) {
+          console.log(`[ScrapeJob] ${new Date().toISOString()} — Fallback extraction failed:`, e);
         }
       }
-    }
-
-    // If all strategies failed
-    if (!html || html.length < 500) {
-      console.error('All fetch strategies failed. Last error:', lastError);
       
-      let errorMessage = 'Die Job-Seite konnte nicht geladen werden. ';
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[ScrapeJob] ${new Date().toISOString()} — fetchHTML failed:`, errorMsg);
       
-      if (lastError?.message?.includes('http2 error') || lastError?.message?.includes('stream error')) {
-        errorMessage += 'Diese Website blockiert automatisierte Zugriffe. Bitte versuchen Sie einen anderen Job-Link oder warten Sie einige Minuten bevor Sie es erneut versuchen.';
-      } else if (lastError?.message?.includes('404')) {
-        errorMessage += 'Die Stellenausschreibung wurde nicht gefunden. Bitte überprüfen Sie den Link.';
-      } else if (lastError?.message?.includes('403')) {
-        errorMessage += 'Der Zugriff auf diese Seite wurde verweigert. Diese Website erlaubt keine automatisierten Zugriffe.';
-      } else if (lastError?.message?.includes('timeout')) {
-        errorMessage += 'Die Seite antwortet nicht. Bitte versuchen Sie es später erneut.';
+      // Build user-friendly error message
+      let userMessage = 'Die Job-Seite konnte nicht geladen werden. ';
+      let errorCode = 'FETCH_ERROR';
+      
+      if (errorMsg.includes('BLOCKED')) {
+        errorCode = 'BLOCKED';
+        userMessage += 'Diese Website blockiert automatisierte Zugriffe. Bitte kopieren Sie den Stelleninhalt manuell oder versuchen Sie einen direkteren Link.';
+      } else if (errorMsg.includes('TIMEOUT')) {
+        errorCode = 'TIMEOUT';
+        userMessage += 'Die Seite antwortet nicht. Bitte versuchen Sie es später erneut.';
+      } else if (errorMsg.includes('404')) {
+        errorCode = 'NOT_FOUND';
+        userMessage += 'Die Stellenausschreibung wurde nicht gefunden. Bitte überprüfen Sie den Link.';
+      } else if (errorMsg.includes('403')) {
+        errorCode = 'FORBIDDEN';
+        userMessage += 'Der Zugriff auf diese Seite wurde verweigert.';
       } else {
-        errorMessage += 'Möglicherweise verwendet diese Website erweiterte Bot-Erkennung. Bitte versuchen Sie einen direkteren Job-Link.';
+        userMessage += 'Möglicherweise verwendet diese Website erweiterte Bot-Erkennung.';
       }
       
       return new Response(
         JSON.stringify({ 
           success: false, 
-          code: 'FETCH_ERROR',
-          message: errorMessage,
-          details: lastError?.message || 'Unknown error',
-          suggestion: 'Versuchen Sie einen direkten Link zur Stellenausschreibung anstatt eines Links über Suchfilter oder Listen.'
+          code: errorCode,
+          message: userMessage,
+          details: errorMsg,
+          suggestion: 'Versuchen Sie einen direkten Link zur Stellenausschreibung oder kopieren Sie den Text manuell.'
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Extract job data
+    // Extract job data with multi-layer fallback
+    console.log(`[ScrapeJob] ${new Date().toISOString()} — Extraction pipeline: HTML → Text → GPT`);
+    
     let jobData;
     try {
-      jobData = extractJobData(html, url);
-      console.log('Extracted job data:', {
+      jobData = await extractJobData(html, url);
+      console.log(`[ScrapeJob] ${new Date().toISOString()} — Extracted job data:`, {
         jobtitel: jobData.jobtitel,
         arbeitgeber: jobData.arbeitgeber,
         ort: jobData.ort,
-        anforderungen: jobData.anforderungen,
-        beschreibung: jobData.beschreibung ? jobData.beschreibung.substring(0, 200) + '...' : 'N/A',
-        bewerbungsprozess: jobData.bewerbungsprozess || 'N/A'
+        anforderungen: jobData.anforderungen.length,
+        beschreibung: jobData.beschreibung ? jobData.beschreibung.substring(0, 100) + '...' : 'N/A',
+        bewerbungsprozess: jobData.bewerbungsprozess ? 'Present' : 'N/A'
       });
-    } catch (extractError) {
-      console.error('Error extracting job data:', extractError);
       
-      if (extractError instanceof Error && extractError.message.includes('INCOMPLETE_SOURCE')) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            code: 'INCOMPLETE_SOURCE',
-            message: 'Could not extract sufficient job information from this page. Please try a different job listing URL.'
-          }),
-          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      // Validate extracted fields - trigger GPT fallback if empty
+      if (!jobData?.jobtitel || !jobData?.arbeitgeber || jobData.jobtitel.length < 3) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — HTML extraction returned empty fields — invoking GPT fallback`);
+        try {
+          jobData = await extractJobDataViaGPT(html, userCity);
+          console.log(`[ScrapeJob] ${new Date().toISOString()} — ✅ GPT fallback successful after empty HTML extraction`);
+        } catch (gptError) {
+          console.error(`[ScrapeJob] ${new Date().toISOString()} — GPT fallback failed:`, gptError);
+          throw new Error('INCOMPLETE_SOURCE: GPT fallback failed');
+        }
       }
+    } catch (extractError) {
+      console.error(`[ScrapeJob] ${new Date().toISOString()} — HTML extraction failed:`, extractError);
       
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Error processing job page content.' 
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      // Step 1: Try text-based extraction
+      if (extractError instanceof Error && extractError.message.includes('INCOMPLETE_SOURCE')) {
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — Attempting text-based extraction fallback`);
+        
+        try {
+          const plainText = stripHtmlTags(html);
+          jobData = await extractJobDataFromText(plainText);
+          
+          console.log(`[ScrapeJob] ${new Date().toISOString()} — Text extraction successful`);
+          
+          // Validate text extraction results - trigger GPT if empty
+          if (!jobData?.jobtitel || !jobData?.arbeitgeber || jobData.jobtitel.length < 3) {
+            console.log(`[ScrapeJob] ${new Date().toISOString()} — Text extraction incomplete — invoking GPT fallback`);
+            try {
+              jobData = await extractJobDataViaGPT(html, userCity);
+              console.log(`[ScrapeJob] ${new Date().toISOString()} — ✅ GPT fallback successful (after incomplete text extraction)`);
+            } catch (gptError) {
+              console.error(`[ScrapeJob] ${new Date().toISOString()} — ❌ GPT fallback failed:`, gptError);
+              throw new Error('INCOMPLETE_SOURCE: GPT fallback failed');
+            }
+          } else {
+            // Override location with user's city if provided
+            if (userCity && userCity.trim()) {
+              jobData.ort = userCity.trim();
+              const currentDate = new Date();
+              const formattedDate = `${String(currentDate.getDate()).padStart(2, '0')}.${String(currentDate.getMonth() + 1).padStart(2, '0')}.${currentDate.getFullYear()}`;
+              jobData.datum = `${userCity.trim()}, ${formattedDate}`;
+            }
+          }
+        } catch (textError) {
+          console.log(`[ScrapeJob] ${new Date().toISOString()} — Text extraction also failed:`, textError);
+          
+          // Step 2: Try GPT semantic extraction as final fallback
+          try {
+            jobData = await extractJobDataViaGPT(html, userCity);
+            
+            return new Response(
+              JSON.stringify({ 
+                success: true, 
+                jobData: jobData,
+                structuredData: {
+                  jobtitel: jobData.jobtitel,
+                  arbeitgeber: jobData.arbeitgeber,
+                  adresse: jobData.adresse,
+                  ort: jobData.ort,
+                  datum: jobData.datum
+                },
+                message: 'Job data extracted via GPT semantic parser'
+              }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          } catch (gptError) {
+            console.error(`[ScrapeJob] ${new Date().toISOString()} — ❌ GPT extraction also failed:`, gptError);
+            
+            // All extraction methods failed - return error
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                code: 'INCOMPLETE_SOURCE',
+                message: 'Die Seite lieferte unvollständige Daten (z. B. kein Titel, Arbeitgeber oder Text). Bitte versuchen Sie es mit einem anderen Link oder kopieren Sie den Text manuell.'
+              }),
+              { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+      } else {
+        // Non-INCOMPLETE_SOURCE error - still try GPT as final attempt
+        console.log(`[ScrapeJob] ${new Date().toISOString()} — HTML extraction error (non-INCOMPLETE) — final GPT attempt`);
+        try {
+          jobData = await extractJobDataViaGPT(html, userCity);
+          console.log(`[ScrapeJob] ${new Date().toISOString()} — ✅ Final GPT fallback successful`);
+          
+          return new Response(
+            JSON.stringify({
+              success: true,
+              jobData,
+              structuredData: {
+                jobtitel: jobData.jobtitel,
+                arbeitgeber: jobData.arbeitgeber,
+                adresse: jobData.adresse,
+                ort: jobData.ort,
+                datum: jobData.datum
+              },
+              message: 'Job data extracted via GPT fallback'
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } catch (gptFinalError) {
+          console.error(`[ScrapeJob] ${new Date().toISOString()} — ❌ Final GPT fallback failed:`, gptFinalError);
+          
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              message: 'Error processing job page content.' 
+            }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
     }
 
     // Usage tracking removed - function is now public
@@ -1209,7 +1776,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error in scrape-job function:', error);
+    console.error(`[ScrapeJob] ${new Date().toISOString()} — Error in scrape-job function:`, error);
     return new Response(
       JSON.stringify({ 
         success: false, 
