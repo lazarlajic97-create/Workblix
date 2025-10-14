@@ -37,7 +37,7 @@ const Subscription = () => {
       setProfile(data);
     } catch (error) {
       console.error("Error fetching profile:", error);
-      toast.error("Failed to load subscription data");
+      toast.error("Fehler beim Laden der Abonnementdaten");
     } finally {
       setLoading(false);
     }
@@ -45,7 +45,7 @@ const Subscription = () => {
 
   const handleManageSubscription = async () => {
     if (!profile?.stripe_customer_id) {
-      toast.error("No subscription found");
+      toast.error("Kein Abonnement gefunden");
       return;
     }
 
@@ -53,7 +53,7 @@ const Subscription = () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        toast.error("Authentication required");
+        toast.error("Authentifizierung erforderlich");
         navigate("/auth");
         return;
       }
@@ -70,7 +70,7 @@ const Subscription = () => {
       window.location.href = result.url;
     } catch (error) {
       console.error("Error creating portal session:", error);
-      toast.error("Failed to open subscription portal");
+      toast.error("Fehler beim Öffnen des Abonnement-Portals");
       setManagingSubscription(false);
     }
   };
@@ -93,12 +93,12 @@ const Subscription = () => {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-6">Subscription Management</h1>
+      <h1 className="text-3xl font-bold mb-6">Abo verwalten</h1>
 
       <Card className="mb-6">
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Current Plan</CardTitle>
+            <CardTitle>Aktueller Plan</CardTitle>
             <Badge variant={isPremium ? "default" : "secondary"} className="text-lg px-3 py-1">
               {isPremium ? (
                 <>
@@ -106,12 +106,12 @@ const Subscription = () => {
                   Premium
                 </>
               ) : (
-                "Free"
+                "Kostenlos"
               )}
             </Badge>
           </div>
           <CardDescription>
-            Manage your subscription and billing details
+            Verwalten Sie Ihr Abonnement und Ihre Rechnungsdetails
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -124,7 +124,7 @@ const Subscription = () => {
                       <CreditCard className="w-4 h-4 mr-2" />
                       <span>Status: </span>
                       <Badge variant={isCanceled ? "destructive" : "default"} className="ml-2">
-                        {isCanceled ? "Canceled" : "Active"}
+                        {isCanceled ? "Gekündigt" : "Aktiv"}
                       </Badge>
                     </div>
 
@@ -132,7 +132,7 @@ const Subscription = () => {
                       <div className="flex items-center text-sm text-muted-foreground">
                         <Calendar className="w-4 h-4 mr-2" />
                         <span>
-                          {isCanceled ? "Access until: " : "Next billing date: "}
+                          {isCanceled ? "Zugriff bis: " : "Nächster Abrechnungstermin: "}
                           {format(new Date(profile.current_period_end), "MMMM dd, yyyy")}
                         </span>
                       </div>
@@ -141,7 +141,7 @@ const Subscription = () => {
                     {isCanceled && (
                       <div className="flex items-center text-sm text-yellow-600 dark:text-yellow-500 mt-2">
                         <AlertCircle className="w-4 h-4 mr-2" />
-                        <span>Your subscription will end on the date above</span>
+                        <span>Ihr Abonnement endet am oben genannten Datum</span>
                       </div>
                     )}
                   </div>
@@ -152,10 +152,10 @@ const Subscription = () => {
                     className="w-full sm:w-auto"
                   >
                     {managingSubscription && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Manage Subscription
+                    Abo verwalten
                   </Button>
                   <p className="text-sm text-muted-foreground">
-                    Update payment method, download invoices, or cancel your subscription
+                    Zahlungsmethode aktualisieren, Rechnungen herunterladen oder Abonnement kündigen
                   </p>
                 </>
               ) : (
@@ -165,7 +165,7 @@ const Subscription = () => {
                       <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
                       <span>Status: </span>
                       <Badge variant="default" className="ml-2 bg-green-600">
-                        Active
+                        Aktiv
                       </Badge>
                     </div>
                     <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mt-4">
@@ -183,10 +183,10 @@ const Subscription = () => {
           ) : (
             <>
               <p className="text-muted-foreground">
-                You're currently on the free plan. Upgrade to Premium to unlock all features.
+                Sie nutzen derzeit den kostenlosen Plan. Upgraden Sie auf Premium, um alle Funktionen freizuschalten.
               </p>
               <Button onClick={handleUpgrade} className="w-full sm:w-auto">
-                Upgrade to Premium
+                Auf Premium upgraden
               </Button>
             </>
           )}
@@ -195,34 +195,34 @@ const Subscription = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Plan Comparison</CardTitle>
-          <CardDescription>See what's included in each plan</CardDescription>
+          <CardTitle>Plan-Vergleich</CardTitle>
+          <CardDescription>Sehen Sie, was in jedem Plan enthalten ist</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div>
-                <h3 className="font-semibold text-lg mb-2">Free Plan</h3>
+                <h3 className="font-semibold text-lg mb-2">Kostenloser Plan</h3>
                 <ul className="space-y-2">
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-muted-foreground" />
-                    <span className="text-sm">1 CV generation per month</span>
+                    <span className="text-sm">1 Lebenslauf-Generierung pro Monat</span>
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-muted-foreground" />
-                    <span className="text-sm">0 job URL scans per month</span>
+                    <span className="text-sm">0 Stellenanzeigen-URL-Scans pro Monat</span>
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-muted-foreground" />
-                    <span className="text-sm">1 job manual application per month</span>
+                    <span className="text-sm">1 manuelle Bewerbung pro Monat</span>
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-muted-foreground" />
-                    <span className="text-sm">Basic templates only</span>
+                    <span className="text-sm">Nur Basis-Vorlagen</span>
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-muted-foreground" />
-                    <span className="text-sm">View generated documents</span>
+                    <span className="text-sm">Generierte Dokumente anzeigen</span>
                   </li>
                 </ul>
               </div>
@@ -237,31 +237,31 @@ const Subscription = () => {
                 <ul className="space-y-2">
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-primary" />
-                    <span className="text-sm font-medium">Unlimited CV generations</span>
+                    <span className="text-sm font-medium">Unbegrenzte Lebenslauf-Generierungen</span>
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-primary" />
-                    <span className="text-sm font-medium">Unlimited job URL scans</span>
+                    <span className="text-sm font-medium">Unbegrenzte Stellenanzeigen-URL-Scans</span>
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-primary" />
-                    <span className="text-sm font-medium">All premium templates</span>
+                    <span className="text-sm font-medium">Alle Premium-Vorlagen</span>
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-primary" />
-                    <span className="text-sm font-medium">PDF & DOCX downloads</span>
+                    <span className="text-sm font-medium">PDF- und DOCX-Downloads</span>
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-primary" />
-                    <span className="text-sm font-medium">Priority support</span>
+                    <span className="text-sm font-medium">Prioritätssupport</span>
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-primary" />
-                    <span className="text-sm font-medium">Advanced AI features</span>
+                    <span className="text-sm font-medium">Erweiterte KI-Funktionen</span>
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="w-4 h-4 mr-2 mt-0.5 text-primary" />
-                    <span className="text-sm font-medium">Remove watermarks</span>
+                    <span className="text-sm font-medium">Wasserzeichen entfernen</span>
                   </li>
                 </ul>
               </div>

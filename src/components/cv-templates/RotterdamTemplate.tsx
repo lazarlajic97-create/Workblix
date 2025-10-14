@@ -149,9 +149,9 @@ export const RotterdamTemplate: React.FC<RotterdamTemplateProps> = ({ profile })
         <h2 style={styles.leftH2}>
           {profile.first_name} {profile.last_name}
         </h2>
-        {profile.experience && profile.experience.length > 0 && (
+        {(profile.professional_title || (profile.experience && profile.experience.length > 0)) && (
           <p style={{ ...styles.leftP, textAlign: 'center' }}>
-            {profile.experience[0].position}
+            {profile.professional_title || profile.experience[0].position}
           </p>
         )}
 
@@ -226,9 +226,9 @@ export const RotterdamTemplate: React.FC<RotterdamTemplateProps> = ({ profile })
           <h1 style={styles.headerH1}>
             {profile.first_name} {profile.last_name}
           </h1>
-          {profile.experience && profile.experience.length > 0 && (
+          {(profile.professional_title || (profile.experience && profile.experience.length > 0)) && (
             <span style={styles.headerSpan}>
-              {profile.experience[0].position}
+              {profile.professional_title || profile.experience[0].position}
             </span>
           )}
         </div>

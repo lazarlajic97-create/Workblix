@@ -90,6 +90,7 @@ export interface Profile {
   email: string;
   first_name: string;
   last_name: string;
+  professional_title?: string;
   phone: string;
   address: string;
   city: string;
@@ -143,6 +144,7 @@ export default function Profile() {
     email: '',
     first_name: '',
     last_name: '',
+    professional_title: '',
     phone: '',
     address: '',
     city: '',
@@ -201,6 +203,7 @@ export default function Profile() {
           email: data.email || '',
           first_name: data.first_name || '',
           last_name: data.last_name || '',
+          professional_title: data.professional_title || '',
           phone: data.phone || '',
           address: data.address || '',
           city: data.city || '',
@@ -340,6 +343,7 @@ export default function Profile() {
     return {
       personalInfo: {
         fullName: `${profile.first_name} ${profile.last_name}`,
+        professionalTitle: profile.professional_title || (profile.experience[0]?.position ?? ''),
         email: profile.email,
         phone: profile.phone,
         address: [profile.address, `${profile.postal_code} ${profile.city}`, profile.country].filter(Boolean).join(', '),
@@ -1625,6 +1629,7 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
         email: profile.email || user.email || '',
         first_name: profile.first_name || '',
         last_name: profile.last_name || '',
+        professional_title: profile.professional_title || '',
         phone: profile.phone || '',
         address: profile.address || '',
         city: profile.city || '',
@@ -2180,7 +2185,20 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
                     />
                   </div>
                 </div>
-                
+
+                <div className="space-y-2">
+                  <Label htmlFor="professional_title">Titel unter dem Namen</Label>
+                  <Input
+                    id="professional_title"
+                    value={profile.professional_title || ''}
+                    onChange={(e) => setProfile(prev => ({ ...prev, professional_title: e.target.value }))}
+                    placeholder="z. B. Sales Agent, Software Engineer, Marketing Specialist"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Dieser Text erscheint direkt unter deinem Namen in allen Lebenslauf-Templates.
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="email">E-Mail</Label>
@@ -2392,7 +2410,7 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Institution</Label>
+                        <Label>Uni/Schule</Label>
                         <Input
                           value={edu.institution}
                           onChange={(e) => updateEducation(edu.id, 'institution', e.target.value)}
@@ -2407,15 +2425,6 @@ ${content.languages.map((lang: Language) => `• ${lang.name} (${lang.level})`).
                           placeholder="Bachelor of Science"
                         />
                       </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Studienrichtung</Label>
-                      <Input
-                        value={edu.field}
-                        onChange={(e) => updateEducation(edu.id, 'field', e.target.value)}
-                        placeholder="Informatik"
-                      />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

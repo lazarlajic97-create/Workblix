@@ -155,9 +155,9 @@ export const RigaTemplate: React.FC<RigaTemplateProps> = ({ profile }) => {
             <h1 style={styles.headerH1}>
               {profile.first_name} {profile.last_name}
             </h1>
-            {profile.experience && profile.experience.length > 0 && (
+            {(profile.professional_title || (profile.experience && profile.experience.length > 0)) && (
               <p style={styles.headerP}>
-                {profile.experience[0].position}
+                {profile.professional_title || profile.experience[0].position}
               </p>
             )}
           </div>

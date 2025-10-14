@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Download, Copy, Edit, Save } from 'lucide-react';
+import { Download, Copy, Edit, Save, Bold, Italic, Underline, Type } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import html2pdf from 'html2pdf.js';
+import { Separator } from '@/components/ui/separator';
 
 interface CoverLetterPreviewProps {
   letterText: string;
@@ -20,18 +21,22 @@ interface CoverLetterPreviewProps {
     ort?: string;
   };
   date?: string;
+  onSave?: (editedText: string) => void;
 }
 
 export default function CoverLetterPreview({
   letterText,
   applicantInfo,
   jobInfo,
-  date
+  date,
+  onSave
 }: CoverLetterPreviewProps) {
   const { toast } = useToast();
   const letterRef = useRef<HTMLDivElement>(null);
+  const editableRef = useRef<HTMLDivElement>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState(letterText);
+  const [editedHtml, setEditedHtml] = useState<string>('');
   
   // Spacing controls
   const [headerSpacing, setHeaderSpacing] = useState(12);
@@ -48,7 +53,59 @@ export default function CoverLetterPreview({
   // Update edited text when letterText changes
   React.useEffect(() => {
     setEditedText(letterText);
+    // Reset HTML state when new letter comes in
+    setEditedHtml('');
   }, [letterText]);
+  
+  // Initialize editedHtml when entering edit mode for the first time
+  React.useEffect(() => {
+    if (isEditing && !editedHtml) {
+      // Parse paragraphs directly from editedText to avoid circular dependency
+      const lines = editedText.split('\n').filter(l => l.trim());
+      const salutationIndex = lines.findIndex(l => l.includes('Sehr geehrte') || l.includes('Sehr geehrter'));
+      const closingIndex = lines.findIndex(l => l.includes('Mit freundlichen Grüßen') || l.includes('Freundliche Grüße'));
+      const bodyLines = salutationIndex !== -1 && closingIndex !== -1
+        ? lines.slice(salutationIndex + 1, closingIndex)
+        : lines;
+      
+      const paragraphs: string[] = [];
+      let currentParagraph = '';
+      bodyLines.forEach(line => {
+        if (line.trim()) {
+          currentParagraph += (currentParagraph ? ' ' : '') + line.trim();
+        } else if (currentParagraph) {
+          paragraphs.push(currentParagraph);
+          currentParagraph = '';
+        }
+      });
+      if (currentParagraph) {
+        paragraphs.push(currentParagraph);
+      }
+      
+      const filteredParagraphs = paragraphs.filter(p => p.length > 20);
+      
+      if (filteredParagraphs.length > 0) {
+        const initialHtml = filteredParagraphs
+          .map(p => {
+            // Apply bold formatting to keywords on initialization
+            let formatted = p
+              .replace(/\b(React|TypeScript|JavaScript|Python|Java|SAP|AWS|Docker|Kubernetes|Projektmanagement|Teamleitung|Agile|Scrum|Node\.js|Vue\.js)\b/gi, '<strong>$1</strong>')
+              .replace(/(\d+\+?\s*Jahre?)/gi, '<strong>$1</strong>');
+            return `<p style="margin-bottom: ${paragraphSpacing}mm; text-align: justify; hyphens: auto; word-break: break-word; overflow-wrap: break-word;">${formatted}</p>`;
+          })
+          .join('');
+        setEditedHtml(initialHtml);
+      }
+    }
+  }, [isEditing, editedHtml, editedText, paragraphSpacing]);
+  
+  // Rich text formatting functions
+  const applyFormat = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    if (editableRef.current) {
+      setEditedHtml(editableRef.current.innerHTML);
+    }
+  };
 
   // Extract applicant info from letter text if not provided
   const extractedInfo = React.useMemo(() => {
@@ -73,7 +130,12 @@ export default function CoverLetterPreview({
 
   // Parse letter into sections (use editedText for display)
   const letterSections = React.useMemo(() => {
-    const lines = editedText.split('\n').filter(l => l.trim());
+    // If we have editedHtml, parse from that instead
+    const sourceText = editedHtml ? 
+      (new DOMParser().parseFromString(editedHtml, 'text/html').body.textContent || editedText) : 
+      editedText;
+      
+    const lines = sourceText.split('\n').filter(l => l.trim());
     
     // Find salutation index
     const salutationIndex = lines.findIndex(l => l.includes('Sehr geehrte') || l.includes('Sehr geehrter'));
@@ -118,12 +180,62 @@ export default function CoverLetterPreview({
       paragraphs: paragraphs.filter(p => p.length > 20), // Filter out very short paragraphs
       signature
     };
-  }, [editedText, applicantInfo, extractedInfo]);
+  }, [editedText, editedHtml, applicantInfo, extractedInfo]);
 
   const downloadAsPDF = async () => {
     if (!letterRef.current) return;
 
     try {
+      // Create a clone for PDF generation to ensure exact rendering
+      const cloneNode = letterRef.current.cloneNode(true) as HTMLElement;
+      
+      // Apply comprehensive print-specific styles for perfect rendering
+      cloneNode.style.width = '210mm';
+      cloneNode.style.minHeight = '297mm';
+      cloneNode.style.background = 'white';
+      cloneNode.style.color = '#222';
+      
+      // Critical: Ensure proper text wrapping and hyphenation
+      cloneNode.style.wordWrap = 'break-word';
+      cloneNode.style.overflowWrap = 'break-word';
+      cloneNode.style.wordBreak = 'normal';
+      cloneNode.style.hyphens = 'auto';
+      cloneNode.style.WebkitHyphens = 'auto';
+      cloneNode.style.MozHyphens = 'auto';
+      cloneNode.style.msHyphens = 'auto';
+      
+      // Apply to all text elements
+      const allTextElements = cloneNode.querySelectorAll('p, div, h1, h2, h3, span');
+      allTextElements.forEach((el: any) => {
+        el.style.wordWrap = 'break-word';
+        el.style.overflowWrap = 'break-word';
+        el.style.wordBreak = 'normal';
+        el.style.hyphens = 'auto';
+        el.style.WebkitHyphens = 'auto';
+        el.style.whiteSpace = 'normal';
+        
+        // Ensure no overflow
+        el.style.maxWidth = '100%';
+        el.style.overflow = 'visible';
+        
+        // Preserve text alignment
+        if (el.style.textAlign === 'right') {
+          el.style.textAlign = 'right';
+          el.style.paddingRight = '0';
+          el.style.marginRight = '0';
+        }
+      });
+      
+      // Fix right column specifically to prevent overflow
+      const rightColumn = cloneNode.querySelectorAll('[style*="text-align: right"], [style*="textAlign: right"]');
+      rightColumn.forEach((el: any) => {
+        el.style.textAlign = 'right';
+        el.style.wordBreak = 'break-word';
+        el.style.overflowWrap = 'break-word';
+        el.style.maxWidth = '100%';
+        el.style.whiteSpace = 'normal';
+      });
+      
       // Convert cm to mm for html2pdf (format: [top, right, bottom, left])
       const marginsInMm: [number, number, number, number] = [
         marginTop * 10,
@@ -139,22 +251,38 @@ export default function CoverLetterPreview({
           filename: `Anschreiben_${jobInfo?.arbeitgeber?.replace(/\s+/g, '_') || 'Bewerbung'}.pdf`,
           image: { type: 'jpeg', quality: 0.98 },
           html2canvas: { 
-            scale: 2, 
+            scale: 2.5, // Optimized scale - too high can cause rendering issues
             useCORS: true,
             logging: false,
-            windowWidth: 794, // A4 width in pixels at 96 DPI
-            windowHeight: 1123 // A4 height in pixels at 96 DPI
+            windowWidth: 794,
+            windowHeight: 1123,
+            letterRendering: true,
+            allowTaint: true,
+            foreignObjectRendering: false,
+            backgroundColor: '#ffffff',
+            removeContainer: true,
+            imageTimeout: 0,
+            async: true,
+            width: 794,
+            height: 1123,
+            scrollY: 0,
+            scrollX: 0
           },
           jsPDF: { 
             unit: 'mm', 
             format: 'a4', 
-            orientation: 'portrait'
+            orientation: 'portrait',
+            compress: true,
+            precision: 16
           },
           pagebreak: { 
-            mode: ['avoid-all', 'css', 'legacy']
+            mode: ['avoid-all', 'css', 'legacy'],
+            before: '.page-break-before',
+            after: '.page-break-after',
+            avoid: '.avoid-break'
           }
         })
-        .from(letterRef.current)
+        .from(cloneNode)
         .save();
       
       toast({
@@ -180,11 +308,39 @@ export default function CoverLetterPreview({
   };
   
   const saveEdits = () => {
+    // Extract and sync both HTML and plain text
+    if (editableRef.current) {
+      const htmlContent = editableRef.current.innerHTML;
+      setEditedHtml(htmlContent);
+      
+      // Extract plain text for text-based operations
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = htmlContent;
+      const plainText = tempDiv.innerText || tempDiv.textContent || '';
+      setEditedText(plainText);
+      
+      console.log('Saved edits:', {
+        htmlLength: htmlContent.length,
+        plainTextLength: plainText.length
+      });
+    }
+    
     setIsEditing(false);
-    toast({
-      title: 'Änderungen gespeichert',
-      description: 'Deine Bearbeitungen wurden übernommen. Das PDF verwendet jetzt deine angepasste Version.',
-    });
+    
+    // Call onSave callback if provided (for Documents page)
+    // Save the plain text version for consistency
+    if (onSave) {
+      const textToSave = editableRef.current ? 
+        (editableRef.current.innerText || editableRef.current.textContent || editedText) :
+        editedText;
+      onSave(textToSave);
+    } else {
+      // Show local toast if no onSave callback (for TwoStepApplicationFlow)
+      toast({
+        title: 'Änderungen gespeichert',
+        description: 'Deine Bearbeitungen wurden übernommen. Das PDF verwendet jetzt deine angepasste Version.',
+      });
+    }
   };
 
   return (
@@ -230,12 +386,61 @@ export default function CoverLetterPreview({
       {/* Cover Letter Preview - Same for both Edit & View modes */}
       {isEditing && (
         <>
-          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-sm text-amber-800">
-            <Edit className="h-4 w-4" />
-            <span>
-              <strong>Bearbeitungsmodus:</strong> Klicke direkt in die Textbereiche unten, um sie zu bearbeiten. 
-              Die Vorschau entspricht dem finalen PDF.
-            </span>
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-center gap-2 text-sm text-amber-800 mb-3">
+              <Edit className="h-4 w-4" />
+              <span>
+                <strong>Bearbeitungsmodus:</strong> Klicke direkt in die Textbereiche unten, um sie zu bearbeiten. 
+                Die Vorschau entspricht exakt dem finalen PDF.
+              </span>
+            </div>
+            
+            {/* Rich Text Toolbar */}
+            <div className="flex items-center gap-2 p-2 bg-white border border-amber-300 rounded-lg">
+              <span className="text-xs font-semibold text-gray-600 mr-2">Formatierung:</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => applyFormat('bold')}
+                className="h-8 px-2"
+                title="Fett (Strg+B)"
+              >
+                <Bold className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => applyFormat('italic')}
+                className="h-8 px-2"
+                title="Kursiv (Strg+I)"
+              >
+                <Italic className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => applyFormat('underline')}
+                className="h-8 px-2"
+                title="Unterstrichen (Strg+U)"
+              >
+                <Underline className="h-4 w-4" />
+              </Button>
+              <Separator orientation="vertical" className="h-6" />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => applyFormat('removeFormat')}
+                className="h-8 px-2"
+                title="Formatierung entfernen"
+              >
+                <Type className="h-4 w-4" />
+                <span className="ml-1 text-xs">Format löschen</span>
+              </Button>
+            </div>
           </div>
           
           {/* Spacing Controls */}
@@ -362,7 +567,8 @@ export default function CoverLetterPreview({
         <div className="border rounded-lg bg-white shadow-lg overflow-auto max-h-[800px]">
           <div
             ref={letterRef}
-            className="cover-letter bg-white"
+            className="cover-letter bg-white print-exact"
+            lang="de"
             style={{
               fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif",
               color: '#222',
@@ -374,6 +580,12 @@ export default function CoverLetterPreview({
               paddingBottom: `${marginBottom}cm`,
               paddingLeft: `${marginLeft}cm`,
               paddingRight: `${marginRight}cm`,
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word',
+              hyphens: 'auto',
+              WebkitHyphens: 'auto',
+              MozHyphens: 'auto',
+              msHyphens: 'auto',
             }}
           >
           {/* Header - Two Column Layout */}
@@ -433,34 +645,112 @@ export default function CoverLetterPreview({
             </div>
 
             {/* Right Column - Company Info & Date */}
-            <div className="text-right text-sm" style={{ fontSize: '11pt' }}>
+            <div style={{ fontSize: '11pt', textAlign: 'right', maxWidth: '100%', wordWrap: 'break-word', overflowWrap: 'break-word' }}>
               <p 
                 className={`mb-4 text-gray-700 ${isEditing ? 'hover:bg-blue-50 cursor-text border border-transparent hover:border-blue-300 rounded p-2' : ''}`}
                 contentEditable={isEditing}
                 suppressContentEditableWarning={true}
-                style={{ outline: 'none' }}
+                style={{ 
+                  outline: 'none', 
+                  textAlign: 'right',
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word',
+                  maxWidth: '100%'
+                }}
               >
                 {extractedInfo.cityDate}
               </p>
-              <div className="text-gray-800">
+              <div className="text-gray-800" style={{ 
+                textAlign: 'right',
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word',
+                maxWidth: '100%',
+                whiteSpace: 'normal'
+              }}>
                 <p 
                   className={`font-semibold ${isEditing ? 'hover:bg-blue-50 cursor-text border border-transparent hover:border-blue-300 rounded p-1' : ''}`}
                   contentEditable={isEditing}
                   suppressContentEditableWarning={true}
-                  style={{ outline: 'none' }}
+                  style={{ 
+                    outline: 'none', 
+                    textAlign: 'right', 
+                    marginBottom: '2px',
+                    wordWrap: 'break-word',
+                    overflowWrap: 'break-word',
+                    maxWidth: '100%',
+                    whiteSpace: 'normal'
+                  }}
                 >
                   {jobInfo?.arbeitgeber || 'Unternehmen'}
                 </p>
-                {jobInfo?.ort && (
-                  <p 
-                    className={isEditing ? 'hover:bg-blue-50 cursor-text border border-transparent hover:border-blue-300 rounded p-1' : ''}
-                    contentEditable={isEditing}
-                    suppressContentEditableWarning={true}
-                    style={{ outline: 'none' }}
-                  >
-                    {jobInfo.ort}
-                  </p>
-                )}
+                {jobInfo?.ort && (() => {
+                  // Parse address - handle both single line and multi-line addresses
+                  const address = jobInfo.ort;
+                  // Check if address contains postal code pattern (street + postal + city)
+                  const addressMatch = address.match(/^(.+?)\s+(\d{5})\s+(.+)$/);
+                  
+                  if (addressMatch) {
+                    // Address has street, postal code, and city
+                    const [, street, postal, city] = addressMatch;
+                    return (
+                      <>
+                        <p 
+                          className={isEditing ? 'hover:bg-blue-50 cursor-text border border-transparent hover:border-blue-300 rounded p-1' : ''}
+                          contentEditable={isEditing}
+                          suppressContentEditableWarning={true}
+                          style={{ 
+                            outline: 'none', 
+                            textAlign: 'right', 
+                            marginBottom: '2px',
+                            wordWrap: 'break-word',
+                            overflowWrap: 'break-word',
+                            maxWidth: '100%',
+                            whiteSpace: 'normal'
+                          }}
+                        >
+                          {street}
+                        </p>
+                        <p 
+                          className={isEditing ? 'hover:bg-blue-50 cursor-text border border-transparent hover:border-blue-300 rounded p-1' : ''}
+                          contentEditable={isEditing}
+                          suppressContentEditableWarning={true}
+                          style={{ 
+                            outline: 'none', 
+                            textAlign: 'right',
+                            wordWrap: 'break-word',
+                            overflowWrap: 'break-word',
+                            maxWidth: '100%',
+                            whiteSpace: 'normal'
+                          }}
+                        >
+                          {postal} {city}
+                        </p>
+                      </>
+                    );
+                  } else {
+                    // Display as-is if no postal code pattern found
+                    return (
+                      <p 
+                        className={isEditing ? 'hover:bg-blue-50 cursor-text border border-transparent hover:border-blue-300 rounded p-1' : ''}
+                        contentEditable={isEditing}
+                        suppressContentEditableWarning={true}
+                        style={{ 
+                          outline: 'none', 
+                          textAlign: 'right',
+                          wordWrap: 'break-word',
+                          overflowWrap: 'break-word',
+                          maxWidth: '100%',
+                          whiteSpace: 'normal',
+                          hyphens: 'auto',
+                          WebkitHyphens: 'auto',
+                          MozHyphens: 'auto'
+                        }}
+                      >
+                        {address}
+                      </p>
+                    );
+                  }
+                })()}
               </div>
             </div>
           </div>
@@ -508,57 +798,72 @@ export default function CoverLetterPreview({
             </p>
           </div>
 
-          {/* Body Paragraphs with Clear Section Structure */}
-          <div className="space-y-6" style={{ fontSize: '11.5pt', lineHeight: '1.6' }}>
-            {letterSections.paragraphs.map((paragraph, index) => {
-              // Determine section label
-              let sectionLabel = '';
-              if (index === 0) {
-                sectionLabel = '📝 Einleitung';
-              } else if (index === letterSections.paragraphs.length - 1) {
-                sectionLabel = '🎯 Schluss';
-              } else {
-                sectionLabel = `💼 Hauptteil ${index}`;
-              }
-              
-              return (
-                <div key={index} className="avoid-break">
-                  {isEditing && (
-                    <div className="text-xs font-semibold text-blue-600 mb-2 px-1">
-                      {sectionLabel}
-                    </div>
-                  )}
-                  <p
-                    className={`text-gray-800 ${isEditing ? 'hover:bg-blue-50 cursor-text border border-transparent hover:border-blue-300 rounded p-2' : ''}`}
-                    contentEditable={isEditing}
-                    suppressContentEditableWarning={true}
-                    onBlur={(e) => {
-                      if (isEditing) {
-                        const newText = e.currentTarget.textContent || '';
-                        const lines = editedText.split('\n');
-                        // Find and replace this paragraph in editedText
-                        const updatedText = editedText.replace(paragraph, newText);
-                        setEditedText(updatedText);
-                      }
-                    }}
-                    style={{
-                      textAlign: 'justify',
-                      hyphens: 'auto',
-                      outline: 'none',
-                      marginBottom: `${paragraphSpacing}mm`,
-                    }}
-                    dangerouslySetInnerHTML={{
-                      __html: paragraph
-                        // Bold important keywords
-                        .replace(/\b(React|TypeScript|JavaScript|Python|Java|SAP|AWS|Docker|Kubernetes|Projektmanagement|Teamleitung|Agile|Scrum|Node\.js|Vue\.js|TypeScript)\b/gi, '<strong>$1</strong>')
-                        // Bold years of experience
-                        .replace(/(\d+\+?\s*Jahre?)/gi, '<strong>$1</strong>')
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </div>
+          {/* Body Paragraphs - Editable as single block in edit mode */}
+          {isEditing ? (
+            <div className="avoid-break">
+              <div className="text-xs font-semibold text-blue-600 mb-2 px-1">
+                📝 Anschreiben-Text (vollständig bearbeitbar)
+              </div>
+              <div
+                ref={editableRef}
+                contentEditable={true}
+                suppressContentEditableWarning={true}
+                className="text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 rounded p-3"
+                style={{
+                  fontSize: '11.5pt',
+                  lineHeight: '1.6',
+                  textAlign: 'justify',
+                  hyphens: 'auto',
+                  WebkitHyphens: 'auto',
+                  MozHyphens: 'auto',
+                  msHyphens: 'auto',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'break-word',
+                  minHeight: '300px',
+                }}
+                onInput={(e) => {
+                  if (editableRef.current) {
+                    setEditedHtml(editableRef.current.innerHTML);
+                  }
+                }}
+                dangerouslySetInnerHTML={{
+                  __html: editedHtml || letterSections.paragraphs
+                    .map(p => {
+                      // Apply bold formatting to keywords
+                      let formatted = p
+                        .replace(/\b(React|TypeScript|JavaScript|Python|Java|SAP|AWS|Docker|Kubernetes|Projektmanagement|Teamleitung|Agile|Scrum|Node\.js|Vue\.js)\b/gi, '<strong>$1</strong>')
+                        .replace(/(\d+\+?\s*Jahre?)/gi, '<strong>$1</strong>');
+                      return `<p style="margin-bottom: ${paragraphSpacing}mm; text-align: justify; hyphens: auto; word-break: break-word; overflow-wrap: break-word;">${formatted}</p>`;
+                    })
+                    .join('')
+                }}
+              />
+            </div>
+          ) : (
+            <div className="space-y-0" style={{ fontSize: '11.5pt', lineHeight: '1.6' }}>
+              {letterSections.paragraphs.map((paragraph, index) => (
+                <p
+                  key={index}
+                  className="text-gray-800 avoid-break"
+                  style={{
+                    textAlign: 'justify',
+                    hyphens: 'auto',
+                    WebkitHyphens: 'auto',
+                    MozHyphens: 'auto',
+                    msHyphens: 'auto',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'break-word',
+                    marginBottom: `${paragraphSpacing}mm`,
+                  }}
+                  dangerouslySetInnerHTML={{
+                    __html: paragraph
+                      .replace(/\b(React|TypeScript|JavaScript|Python|Java|SAP|AWS|Docker|Kubernetes|Projektmanagement|Teamleitung|Agile|Scrum|Node\.js|Vue\.js)\b/gi, '<strong>$1</strong>')
+                      .replace(/(\d+\+?\s*Jahre?)/gi, '<strong>$1</strong>')
+                  }}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Closing */}
           <div className="avoid-break" style={{ marginTop: `${closingSpacing}mm` }}>

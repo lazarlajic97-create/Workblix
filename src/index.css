@@ -215,4 +215,99 @@ All colors MUST be HSL.
     background-size: 200% 200%;
     animation: gradient-shift 8s ease infinite;
   }
+
+  /* PDF Preview Styles - Ensure 1:1 match between viewer and PDF */
+  .cover-letter {
+    /* Enable proper hyphenation */
+    -webkit-hyphens: auto;
+    -moz-hyphens: auto;
+    -ms-hyphens: auto;
+    hyphens: auto;
+    
+    /* Word breaking */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: normal;
+    
+    /* Typography for print */
+    font-kerning: normal;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .cover-letter p,
+  .cover-letter div[contenteditable] {
+    /* Text justification with proper hyphenation */
+    text-align: justify;
+    text-justify: inter-word;
+    -webkit-hyphens: auto;
+    -moz-hyphens: auto;
+    -ms-hyphens: auto;
+    hyphens: auto;
+    hyphenate-limit-chars: 6 3 3;
+    hyphenate-limit-lines: 2;
+    
+    /* Word breaking */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+
+  /* Rich text editor preserves formatting */
+  .cover-letter [contenteditable] {
+    outline: none;
+  }
+
+  .cover-letter [contenteditable]:focus {
+    outline: 2px solid hsl(var(--primary) / 0.5);
+    outline-offset: 2px;
+  }
+
+  /* Preserve whitespace and formatting in editable areas */
+  .cover-letter [contenteditable] strong {
+    font-weight: 700;
+  }
+
+  .cover-letter [contenteditable] em,
+  .cover-letter [contenteditable] i {
+    font-style: italic;
+  }
+
+  .cover-letter [contenteditable] u {
+    text-decoration: underline;
+  }
+
+  /* Avoid breaking important elements */
+  .avoid-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Print styles for PDF generation */
+  @media print {
+    .cover-letter {
+      width: 210mm;
+      min-height: 297mm;
+      background: white;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .cover-letter p {
+      orphans: 3;
+      widows: 3;
+    }
+    
+    .avoid-break {
+      page-break-inside: avoid;
+    }
+  }
+
+  /* Ensure consistent rendering across browsers */
+  .print-exact {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color-adjust: exact;
+  }
 }

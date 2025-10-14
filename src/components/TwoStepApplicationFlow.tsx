@@ -156,18 +156,48 @@ export default function TwoStepApplicationFlow() {
       return;
     }
     
-    // Extract applicant info from resume text
-    const nameMatch = resumeText.match(/^([A-ZÄÖÜ][a-zäöü]+(?:\s+[A-ZÄÖÜ][a-zäöü]+)+)/m);
+    // Extract applicant info from resume text with multiple fallback strategies
+    
+    // Name extraction - try multiple patterns
+    let extractedName = '';
+    
+    // Pattern 1: Name at beginning of text (most common in CVs)
+    const namePattern1 = resumeText.match(/^([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)+)/m);
+    
+    // Pattern 2: After common headers like "Name:" or similar
+    const namePattern2 = resumeText.match(/(?:Name|Bewerber|Candidate|Applicant)\s*:?\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)+)/mi);
+    
+    // Pattern 3: In first 200 chars, capitalized full name (2-4 words)
+    const firstPart = resumeText.substring(0, 200);
+    const namePattern3 = firstPart.match(/\b([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+){1,3})\b/);
+    
+    extractedName = namePattern1?.[1] || namePattern2?.[1] || namePattern3?.[1] || '';
+    
+    // Validate name (should be between 4 and 50 characters, at least 2 words)
+    if (extractedName && extractedName.length >= 4 && extractedName.length <= 50) {
+      const words = extractedName.split(/\s+/);
+      if (words.length < 2) {
+        extractedName = ''; // Reset if only one word
+      }
+    } else {
+      extractedName = '';
+    }
+    
     const emailMatch = resumeText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/);
-    const cityMatch = resumeText.match(/\b(\d{5})\s+([A-ZÄÖÜ][a-zäöü]+(?:\s+[A-ZÄÖÜ][a-zäöü]+)?)\b/);
+    const cityMatch = resumeText.match(/\b(\d{5})\s+([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)?)\b/);
     
     // Extract phone - but exclude postal codes (5 digits alone)
-    // Look for phone numbers with at least 6 digits or has country code/separators
-    const phoneMatch = resumeText.match(/(?:\+\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{3,4}[-.\s]?\d{3,9}(?!\s+[A-ZÄÖÜ])/);
+    const phoneMatch = resumeText.match(/(?:\+\d{1,3}[-\.\s]?)?(?:\(?\d{2,4}\)?[-\.\s]?)?\d{3,4}[-\.\s]?\d{3,9}(?!\s+[A-ZÄÖÜ])/);
     
+    console.log('Extracted applicant info:', {
+      name: extractedName || 'NOT FOUND',
+      email: emailMatch?.[0] || 'NOT FOUND',
+      phone: phoneMatch?.[0] || 'NOT FOUND',
+      city: cityMatch ? `${cityMatch[1]} ${cityMatch[2]}` : 'NOT FOUND'
+    });
     
     setApplicantInfo({
-      name: nameMatch?.[1] || 'Bewerber/in',
+      name: extractedName || 'Bewerber/in',
       email: emailMatch?.[0],
       phone: phoneMatch?.[0],
       city: cityMatch ? `${cityMatch[1]} ${cityMatch[2]}` : undefined
@@ -218,6 +248,34 @@ export default function TwoStepApplicationFlow() {
         setWordCount(data.wordCount || 0);
         setJobData(data.jobData);
         setStep(3);
+        
+        // Save to database
+        try {
+          const { error: saveError } = await supabase
+            .from('applications')
+            .insert({
+              user_id: (await supabase.auth.getUser()).data.user?.id,
+              job_title: data.jobData?.jobtitel || 'Position',
+              company_name: data.jobData?.arbeitgeber || 'Unternehmen',
+              job_url: inputMode === 'url' ? jobUrl : null,
+              job_description: data.jobData?.beschreibung || null,
+              generated_application: data.letter,
+              applicant_info: applicantInfo,
+              job_info: data.jobData,
+              date_generated: new Date().toLocaleDateString('de-DE', { 
+                day: '2-digit', 
+                month: 'long', 
+                year: 'numeric' 
+              }),
+              language: 'de'
+            });
+            
+          if (saveError) {
+            console.error('Failed to save application:', saveError);
+          }
+        } catch (saveError) {
+          console.error('Error saving application:', saveError);
+        }
         
         toast({
           title: '✅ Anschreiben erstellt!',

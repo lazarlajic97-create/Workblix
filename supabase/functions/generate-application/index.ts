@@ -2,6 +2,12 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -91,8 +97,280 @@ function validateLetter(letter: string, formattedDate?: string, jobTitle?: strin
   };
 }
 
+const GERMAN_STOP_WORDS = new Set([
+  'und','oder','aber','auch','sowie','der','die','das','den','dem','ein','eine','einer','eines','einem','mit','auf','für','von','im','in','am','an','des','durch','unter','über','ohne','gegen','aus','bis','sind','ist','sowie','zu','zur','zum','bei','als','nach','vor','sich','werden','wird','etc','etc.'
+]);
+
+const SKILL_LEVEL_PRIORITY: Record<string, number> = {
+  expert: 3,
+  experte: 3,
+  advanced: 2,
+  fortgeschritten: 2,
+  intermediate: 2,
+  professional: 2,
+  basic: 1,
+  beginner: 1,
+  anfänger: 1
+};
+
+function normalizeToken(token: string): string {
+  return token
+    .toLowerCase()
+    .replace(/[^a-z0-9äöüß+]+/gi, '')
+    .trim();
+}
+
+/// <reference lib="deno.ns" />
+
+const CATEGORY_HINTS = {
+  technical: {
+    keywords: [
+      'informatik','software','entwickl','developer','engineer','programmier','frontend','backend','fullstack','devops','cloud','ki','ai','ml','data','it','tech','technologie','applikation','applikations','app','code','coding','programmiersprache','react','node','typescript','javascript','python','c++','c#','java','golang','rust','docker','kubernetes','sql','datenbank','microservice','api','scrum','agil','agile'
+    ],
+    prompt: 'Dies ist eine TECHNISCHE Stelle. Betone Software-/IT-Kompetenzen, Informatikkenntnisse, Programmiererfahrung und relevante Projekte. Vermeide betriebswirtschaftliche oder reine Vertriebsinhalte.'
+  },
+  sales: {
+    keywords: [
+      'verkauf','sales','vertrieb','kunden','akquise','kaltakquise','kundenservice','kundenbetreuung','bestandskunden','neukund','crm','vertragsabschluss','vertriebsexperte','umsatz','absatz','lead','verkaufsgespräch'
+    ],
+    prompt: 'Dies ist eine SALES/VERTRIEBS Stelle. Betone Kundenbetreuung, Akquise, Verhandlungserfolge, CRM-Tools und Umsatzzahlen. Vermeide technische Details zu Software- oder Entwicklungs-Stacks.'
+  },
+  marketing: {
+    keywords: [
+      'marketing','kampagne','campaign','seo','sem','content','social media','branding','kommunikation','kommunikations','werbung','performance','analytics','marke','marktforschung','copywriting'
+    ],
+    prompt: 'Dies ist eine MARKETING Stelle. Betone Kampagnen, Content-Erstellung, Kommunikationsstrategien, KPIs, Reichweiten- und Performance-Steigerung. Vermeide tiefe technische oder sales-spezifische Details.'
+  },
+  hr: {
+    keywords: [
+      'hr','personal','human resources','recruiting','talent','bewerber','arbeitnehmer','onboarding','mitarbeiterentwicklung','personalentwicklung','arbeitsrecht','personalverwaltung','schulung','weiterbildung'
+    ],
+    prompt: 'Dies ist eine HR/PERSONAL Stelle. Betone Recruiting, Onboarding, Personalentwicklung, Arbeitsrecht, Bewerbermanagement und Mitarbeiterbetreuung. Vermeide technische Stack-Beschreibungen sowie vertriebsorientierte Inhalte.'
+  },
+  finance: {
+    keywords: [
+      'finance','finanz','controlling','buchhaltung','steuer','accounting','bilanz','kreditor','debitor','kostenrechnung','budget','financial','audit','steuerung','ergebnis','cashflow'
+    ],
+    prompt: 'Dies ist eine FINANZ-/CONTROLLING Stelle. Betone Zahlen, Budgetkontrolle, Bilanzierung, Reporting, Forecasting und finanzielle Analysen. Vermeide kreative Marketing- oder technische Entwicklerdetails.'
+  },
+  operations: {
+    keywords: [
+      'operations','betrieb','logistik','supply chain','prozess','prozesse','produktion','fertigung','qualität','qualitätssicherung','wartung','disposition','planung','dienstleistung','service','facility'
+    ],
+    prompt: 'Dies ist eine OPERATIONS/LOGISTIK/PRODUKTIONS Stelle. Betone Prozessoptimierung, Effizienz, Qualitätssicherung, Planung und operative Steuerung. Vermeide irrelevante Software-Stacks oder reine Vertriebskennzahlen.'
+  }
+} as const;
+
+type JobCategory = keyof typeof CATEGORY_HINTS;
+
+function detectJobCategories(jobData: any): JobCategory[] {
+  const textSources = [jobData?.jobtitel, jobData?.beschreibung, ...(Array.isArray(jobData?.anforderungen) ? jobData.anforderungen : [])]
+    .filter(Boolean)
+    .join(' ') || '';
+  const normalized = textSources.toLowerCase();
+
+  const categories: JobCategory[] = [];
+  (Object.keys(CATEGORY_HINTS) as JobCategory[]).forEach((category) => {
+    const { keywords } = CATEGORY_HINTS[category];
+    if (keywords.some((hint) => normalized.includes(hint))) {
+      categories.push(category);
+    }
+  });
+
+  if (categories.length === 0) {
+    // Fallback heuristic: technical if job title contains "developer" or similar
+    const fallbackTechnical = /developer|entwickler|engineer/i.test(textSources);
+    const fallbackSales = /sales|vertrieb|verkauf/i.test(textSources);
+    if (fallbackTechnical) categories.push('technical');
+    if (fallbackSales) categories.push('sales');
+  }
+
+  return categories;
+}
+
+function extractJobKeywords(jobData: any): Set<string> {
+  const sources: string[] = [];
+  if (jobData?.jobtitel) sources.push(jobData.jobtitel);
+  if (jobData?.beschreibung) sources.push(jobData.beschreibung);
+  if (Array.isArray(jobData?.anforderungen)) {
+    sources.push(...jobData.anforderungen);
+  }
+  if (Array.isArray(jobData?.tags)) {
+    sources.push(...jobData.tags);
+  }
+
+  const tokens = new Set<string>();
+  for (const source of sources) {
+    const words = String(source)
+      .toLowerCase()
+      .split(/[^a-z0-9äöüß+]+/i)
+      .filter(Boolean);
+    for (const word of words) {
+      const normalized = normalizeToken(word);
+      if (normalized.length >= 3 && !GERMAN_STOP_WORDS.has(normalized)) {
+        tokens.add(normalized);
+      }
+    }
+  }
+
+  return tokens;
+}
+
+function hasAnyHint(text: string, hints: string[]): boolean {
+  if (!text) return false;
+  const normalized = text.toLowerCase();
+  return hints.some((hint) => normalized.includes(hint));
+}
+
+function filterSkillsByJob(
+  skills: any[],
+  jobKeywords: Set<string>,
+  options: { limit?: number; categories?: JobCategory[] } = {}
+): any[] {
+  if (!Array.isArray(skills) || skills.length === 0) return [];
+
+  const { limit = 12, categories = [] } = options;
+  const categoryHints = categories.flatMap((category) => CATEGORY_HINTS[category]?.keywords || []);
+  const keywordArray = Array.from(jobKeywords);
+
+  const scoredSkills = skills
+    .map((skill) => {
+      const rawName = typeof skill?.name === 'string' ? skill.name.trim() : '';
+      if (!rawName) {
+        return null;
+      }
+
+      const nameTokens = rawName
+        .toLowerCase()
+        .replace(/[/(),]/g, ' ')
+        .split(/\s+/)
+        .map(normalizeToken)
+        .filter(Boolean);
+
+      let score = 0;
+      for (const token of nameTokens) {
+        if (!token) continue;
+        if (jobKeywords.has(token)) {
+          score += 2;
+          continue;
+        }
+        if (keywordArray.some((keyword) => keyword.includes(token) || token.includes(keyword))) {
+          score += 1;
+        }
+      }
+
+      if (score === 0) {
+        return null;
+      }
+
+      const level = typeof skill?.level === 'string' ? skill.level.toLowerCase() : '';
+      const levelScore = SKILL_LEVEL_PRIORITY[level] || 0;
+
+      return {
+        skill,
+        score,
+        levelScore
+      };
+    })
+    .filter((entry): entry is { skill: any; score: number; levelScore: number } => entry !== null)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.levelScore !== a.levelScore) return b.levelScore - a.levelScore;
+      return (a.skill.name || '').localeCompare(b.skill.name || '');
+    });
+
+  let filteredSkills = scoredSkills;
+
+  if (categoryHints.length > 0) {
+    const categoryFiltered = filteredSkills.filter((entry) => hasAnyHint(entry.skill?.name || '', categoryHints));
+    if (categoryFiltered.length > 0) {
+      filteredSkills = categoryFiltered;
+    }
+  }
+
+  return filteredSkills.slice(0, limit).map((entry) => entry.skill);
+}
+
+function scoreTextAgainstKeywords(text: string, jobKeywords: Set<string>, keywordArray: string[]): number {
+  const tokens = String(text)
+    .toLowerCase()
+    .replace(/[/(),]/g, ' ')
+    .split(/\s+/)
+    .map(normalizeToken)
+    .filter(Boolean);
+
+  let score = 0;
+  for (const token of tokens) {
+    if (!token) continue;
+    if (jobKeywords.has(token)) {
+      score += 2;
+      continue;
+    }
+    if (keywordArray.some((keyword) => keyword.includes(token) || token.includes(keyword))) {
+      score += 1;
+    }
+  }
+  return score;
+}
+
+function filterExperiencesByJob(
+  experiences: any[],
+  jobKeywords: Set<string>,
+  options: { limit?: number; categories?: JobCategory[] } = {}
+): any[] {
+  if (!Array.isArray(experiences) || experiences.length === 0) return [];
+
+  const { limit = 4, categories = [] } = options;
+  const categoryHints = categories.flatMap((category) => CATEGORY_HINTS[category]?.keywords || []);
+  const keywordArray = Array.from(jobKeywords);
+
+  const scoredExperiences = experiences
+    .map((experience) => {
+      if (!experience) return null;
+      const positionScore = scoreTextAgainstKeywords(experience.position || '', jobKeywords, keywordArray);
+      const descriptionScore = scoreTextAgainstKeywords(experience.description || '', jobKeywords, keywordArray);
+      const companyScore = scoreTextAgainstKeywords(experience.company || '', jobKeywords, keywordArray);
+
+      const totalScore = positionScore * 2 + descriptionScore + companyScore;
+
+      if (totalScore === 0) {
+        return null;
+      }
+
+      const startDate = experience.startDate ? new Date(experience.startDate) : null;
+
+      return {
+        experience,
+        score: totalScore,
+        startTime: startDate?.getTime() ?? 0
+      };
+    })
+    .filter((entry): entry is { experience: any; score: number; startTime: number } => entry !== null)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (b.startTime || 0) - (a.startTime || 0);
+    });
+
+  let filteredEntries = scoredExperiences;
+
+  if (categoryHints.length > 0) {
+    const categoryEntries = filteredEntries.filter((entry) => {
+      const { experience } = entry;
+      const text = [experience.position, experience.description, experience.company]
+        .filter(Boolean)
+        .join(' ');
+      return hasAnyHint(text, categoryHints);
+    });
+    if (categoryEntries.length > 0) {
+      filteredEntries = categoryEntries;
+    }
+  }
+
+  return filteredEntries.slice(0, limit).map((entry) => entry.experience);
+}
+
 // ===== BUILD RESUME TEXT FROM PROFILE =====
-function buildResumeText(profile: any, userEmail: string): string {
+function buildResumeText(profile: any, userEmail: string, relevantSkills: any[] = [], relevantExperiences: any[] = []): string {
   const fullName = profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() : '';
   const address = profile?.address || '';
   const cityInfo = profile ? [profile.postal_code, profile.city].filter(Boolean).join(' ') : '';
@@ -114,8 +392,9 @@ function buildResumeText(profile: any, userEmail: string): string {
   
   // Work experience
   if (profile?.experience && Array.isArray(profile.experience) && profile.experience.length > 0) {
+    const experienceSource = relevantExperiences.length > 0 ? relevantExperiences : profile.experience;
     resumeText += '=== BERUFSERFAHRUNG ===\n';
-    profile.experience.forEach((exp: any) => {
+    experienceSource.forEach((exp: any) => {
       if (exp.position && exp.company) {
         const duration = exp.startDate ? 
           `${exp.startDate} - ${exp.current ? 'Heute' : (exp.endDate || 'Heute')}` : '';
@@ -132,8 +411,9 @@ function buildResumeText(profile: any, userEmail: string): string {
   
   // Skills
   if (profile?.skills && Array.isArray(profile.skills) && profile.skills.length > 0) {
+    const skillsSource = relevantSkills.length > 0 ? relevantSkills : profile.skills;
     resumeText += '=== FACHKENNTNISSE ===\n';
-    profile.skills.forEach((skill: any) => {
+    skillsSource.forEach((skill: any) => {
       if (skill.name) {
         resumeText += `${skill.name}${skill.level ? ` (${skill.level})` : ''}\n`;
       }
@@ -304,12 +584,18 @@ serve(async (req) => {
     
     console.log('Proceeding with job:', jobData.jobtitel);
     
+    const jobKeywords = extractJobKeywords(jobData);
+    const jobCategories = detectJobCategories(jobData);
+    console.log('Job keywords extracted:', jobKeywords.size, 'categories:', jobCategories);
+    let relevantSkills: any[] = [];
+    let relevantExperiences: any[] = [];
+    
     // Continue with existing logic...
     {
       console.log('Found job:', jobData.jobtitel);
       
       // Step 3: Add back profile data integration
-      let profile = null;
+      let profile: any = null;
       let userEmail = '';
       
       // Initialize Supabase client (outside try block for later use)
@@ -376,6 +662,14 @@ serve(async (req) => {
             if (!fullProfileError && fullProfile) {
               profile = fullProfile;
               console.log('Profile loaded:', profile.first_name, profile.last_name);
+              relevantSkills = filterSkillsByJob(profile?.skills || [], jobKeywords, {
+                categories: jobCategories,
+              });
+              relevantExperiences = filterExperiencesByJob(profile?.experience || [], jobKeywords, {
+                categories: jobCategories,
+              });
+              console.log('Relevant skills matched:', relevantSkills.length);
+              console.log('Relevant experiences matched:', relevantExperiences.length);
             } else {
               console.log('No profile found or error:', fullProfileError?.message);
             }
@@ -398,9 +692,59 @@ serve(async (req) => {
       }
       
       // Use provided resumeText or build from profile
-      const resumeText = resumeTextProvided || buildResumeText(profile, userEmail);
+      const resumeText = resumeTextProvided || buildResumeText(profile, userEmail, relevantSkills, relevantExperiences);
       
-      console.log('Resume text length:', resumeText.length);
+      const relevantSkillNames = relevantSkills
+        .map((skill: any) => typeof skill?.name === 'string' ? skill.name.trim() : '')
+        .filter((name: string): name is string => Boolean(name));
+
+      const relevantExperienceSummaries = relevantExperiences
+        .map((experience: any) => {
+          if (!experience?.position || !experience?.company) return '';
+          const duration = experience.startDate ?
+            `${experience.startDate} - ${experience.current ? 'Heute' : (experience.endDate || 'Heute')}` : '';
+          return `${experience.position} bei ${experience.company}${duration ? ` (${duration})` : ''}`;
+        })
+        .filter((summary: string): summary is string => Boolean(summary));
+
+      const jobKeywordList = Array.from(jobKeywords).slice(0, 30).join(', ');
+      
+      // Extract applicant name from resume with multiple strategies
+      let applicantName = '';
+      
+      // Try pattern 1: Name at beginning
+      const nameMatch1 = resumeText.match(/^([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)+)/m);
+      
+      // Try pattern 2: After "Name:" or similar
+      const nameMatch2 = resumeText.match(/(?:Name|Bewerber|Candidate|Applicant)\s*:?\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)+)/mi);
+      
+      // Try pattern 3: In first 200 chars
+      const firstPart = resumeText.substring(0, 200);
+      const nameMatch3 = firstPart.match(/\b([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+){1,3})\b/);
+      
+      applicantName = nameMatch1?.[1] || nameMatch2?.[1] || nameMatch3?.[1] || '';
+      
+      // Validate name
+      if (applicantName && applicantName.length >= 4 && applicantName.length <= 50) {
+        const words = applicantName.split(/\s+/);
+        if (words.length < 2) {
+          applicantName = '';
+        }
+      } else {
+        applicantName = '';
+      }
+      
+      console.log('=== TEXT EXTRACTION DEBUG ===');
+      console.log('Applicant name extracted:', applicantName || 'NOT FOUND');
+      console.log('Company name:', jobData.arbeitgeber);
+      console.log('Job title:', jobData.jobtitel);
+      console.log('=== END DEBUG ===');
+      
+      const classificationHint = jobCategories.length > 0
+        ? jobCategories.map((category) => CATEGORY_HINTS[category]?.prompt).filter(Boolean).join(' ')
+        : 'Fokussiere dich ausschließlich auf Erfahrungen und Fähigkeiten, die in direktem Bezug zur Stellenanzeige stehen.';
+
+      console.log('Resume text length:', resumeText.length, 'Relevant skills:', relevantSkillNames.length, 'Relevant experiences:', relevantExperienceSummaries.length);
       
       // Extract city from job location for proper "City, Date" format
       let cityForDate = '';
@@ -418,6 +762,37 @@ serve(async (req) => {
       // ===== CLEAN SYSTEM PROMPT =====
       const systemPrompt = `Du bist ein Experte für deutsche Bewerbungsschreiben nach DIN 5008.
 Halte dich strikt an folgende Regeln:
+
+0. INFORMATIONS-EXTRAKTION (ABSOLUT KRITISCH):
+   
+   ⚠️ WICHTIG: Identifiziere KORREKT folgende Informationen:
+   
+   A) BEWERBER-NAME:
+      - Lies den Lebenslauf SORGFÄLTIG
+      - Der Name steht meistens am Anfang des Lebenslaufs
+      - Format: "Vorname Nachname" (z.B. "Max Mustermann", "Anna Schmidt")
+      - Verwende NIEMALS generische Namen wie "Bewerber/in" oder "[Dein Name]"
+      - Wenn kein Name gefunden wird, verwende "Ich" statt des Namens
+   
+   B) UNTERNEHMENS-NAME:
+      - Der Firmenname steht unter <STELLENANZEIGE> bei "Unternehmen:"
+      - Verwende EXAKT diesen Namen (z.B. "Conventex GmbH", "BMW AG")
+      - Verwende NIEMALS "das Unternehmen" oder "Ihre Firma"
+      - Im Anschreiben: "bei [EXAKTER FIRMENNAME]"
+   
+   C) JOB-TITEL:
+      - Der Jobtitel steht unter <STELLENANZEIGE> bei "Titel:"
+      - Verwende EXAKT diesen Titel (z.B. "Sales Agent (m/w/d)", "Software Developer")
+      - Im Betreff: "Bewerbung als [EXAKTER JOBTITEL]"
+      - Im Text: "die Position als [EXAKTER JOBTITEL]"
+   
+   BEISPIEL KORREKT:
+   "Während meiner Tätigkeit als Vertriebsmitarbeiter bei Invvenio..."
+   "Mit großem Interesse bewerbe ich mich bei Conventex GmbH als Sales Agent..."
+   
+   BEISPIEL FALSCH:
+   "Während meiner Tätigkeit in einem Unternehmen..."
+   "Mit großem Interesse bewerbe ich mich als Vertriebsmitarbeiter..."
 
 1. LÄNGE: 350–450 Wörter (nur Anschreiben, ohne Adressen)
 
@@ -464,6 +839,8 @@ Halte dich strikt an folgende Regeln:
    NICHT-TECHNISCHEN Stelle erwähnst → Bewerbung wird AUTOMATISCH ABGELEHNT
    
    - Verwende konkrete Firmen, Skills, Zahlen NUR wenn relevant
+   - Nutze ausschließlich Skills aus dem Abschnitt <RELEVANTE_FACHKENNTNISSE> (falls vorhanden) und ignoriere alle anderen Lebenslauf-Skills
+   - Nutze bevorzugt berufliche Stationen aus dem Abschnitt <RELEVANTE_ERFAHRUNGEN> und ignoriere irrelevante Abschnitte
    - Nichts erfinden, keine Platzhalteradressen
 
 3. VERBOTENE PHRASEN (führen zu ungültiger Bewerbung):
@@ -512,14 +889,20 @@ Halte dich strikt an folgende Regeln:
 
       // ===== CLEAN USER PROMPT =====
       const buildUserPrompt = (hint = '') => {
+        const nameHint = applicantName ? 
+          `👤 BEWERBER-NAME (aus Lebenslauf extrahiert): ${applicantName}\n   VERWENDE DIESEN NAMEN im Anschreiben!\n\n` : 
+          `👤 BEWERBER-NAME: Nicht gefunden - EXTRAHIERE den Namen selbst aus dem Lebenslauf oben!\n   Suche am Anfang des Lebenslaufs nach dem vollständigen Namen (Vorname + Nachname).\n\n`;
+        
         return `<LEBENSLAUF>
 ${resumeText}
 </LEBENSLAUF>
 
 <STELLENANZEIGE>
-Titel: ${jobData.jobtitel}
-Unternehmen: ${jobData.arbeitgeber}
-Ort: ${jobData.ort || ''}
+⚠️ VERWENDE DIESE EXAKTEN INFORMATIONEN:
+
+${nameHint}📋 JOBTITEL (EXAKT verwenden): ${jobData.jobtitel}
+🏢 UNTERNEHMENSNAME (EXAKT verwenden): ${jobData.arbeitgeber}
+📍 Ort: ${jobData.ort || ''}
 
 Beschreibung:
 ${jobData.beschreibung}
@@ -527,6 +910,22 @@ ${jobData.beschreibung}
 Anforderungen:
 ${(jobData.anforderungen || []).join('\n')}
 </STELLENANZEIGE>
+
+<STELLENANZEIGE_KEYWORDS>
+${jobKeywordList || 'Keine Schlüsselbegriffe extrahiert.'}
+</STELLENANZEIGE_KEYWORDS>
+
+<KLASSIFIKATIONSHINWEIS>
+${classificationHint}
+</KLASSIFIKATIONSHINWEIS>
+
+<RELEVANTE_FACHKENNTNISSE>
+${relevantSkillNames.length ? relevantSkillNames.join('\n') : 'Keine expliziten Skills hervorgehoben. Verwende nur Kompetenzen, die eindeutig zur Stellenanzeige passen.'}
+</RELEVANTE_FACHKENNTNISSE>
+
+<RELEVANTE_ERFAHRUNGEN>
+${relevantExperienceSummaries.length ? relevantExperienceSummaries.join('\n') : 'Nutze nur Erfahrungen, die klar zu den Aufgaben der Stelle passen. Erwähne keine irrelevanten Stationen.'}
+</RELEVANTE_ERFAHRUNGEN>
 
 <FORMAT>
 ${formattedDate ? `Datum: ${formattedDate}` : 'Kein Datum angegeben'}
@@ -566,7 +965,7 @@ ${hint}
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'gpt-3.5-turbo',
+            model: 'gpt-4o-mini',
             temperature: 0.2,
             top_p: 0.3,
             max_tokens: 1200,
@@ -726,7 +1125,7 @@ ${hint}
           arbeitgeber: jobData.arbeitgeber,
           ort: jobData.ort
         },
-        usedModel: 'gpt-3.5-turbo',
+        usedModel: 'gpt-4o-mini',
         applicationId: "openai-" + Date.now()
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

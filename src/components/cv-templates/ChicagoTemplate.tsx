@@ -201,9 +201,9 @@ export const ChicagoTemplate: React.FC<ChicagoTemplateProps> = ({ profile }) => 
           <div style={styles.name}>
             {profile.first_name} {profile.last_name}
           </div>
-          {profile.experience && profile.experience.length > 0 && (
+          {(profile.professional_title || (profile.experience && profile.experience.length > 0)) && (
             <div style={styles.subtitle}>
-              {profile.experience[0].position}
+              {profile.professional_title || profile.experience[0].position}
             </div>
           )}
 

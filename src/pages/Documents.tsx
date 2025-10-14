@@ -15,8 +15,14 @@ import {
   Eye,
   Trash2,
   Search,
-  Filter
+  Filter,
+  Clock,
+  ExternalLink,
+  Edit3,
+  CheckCircle,
+  X
 } from 'lucide-react';
+import CoverLetterPreview from '@/components/CoverLetterPreview';
 import { Input } from '@/components/ui/input';
 import { 
   Select,
@@ -34,6 +40,19 @@ interface Application {
   generated_application: string | null;
   language: string;
   job_url?: string;
+  applicant_info?: {
+    name: string;
+    address?: string;
+    city?: string;
+    phone?: string;
+    email?: string;
+  } | null;
+  job_info?: {
+    jobtitel: string;
+    arbeitgeber: string;
+    ort?: string;
+  } | null;
+  date_generated?: string | null;
 }
 
 export default function Documents() {
@@ -60,7 +79,7 @@ export default function Documents() {
     try {
       const { data, error } = await supabase
         .from('applications')
-        .select('id, job_title, company_name, created_at, generated_application, language, job_url')
+        .select('id, job_title, company_name, created_at, generated_application, language, job_url, applicant_info, job_info, date_generated')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -104,36 +123,40 @@ export default function Documents() {
     }
   };
 
-  const downloadApplication = (app: Application) => {
-    if (!app.generated_application) {
+  const updateApplication = async (applicationId: string, updatedText: string) => {
+    try {
+      const { error } = await supabase
+        .from('applications')
+        .update({ generated_application: updatedText })
+        .eq('id', applicationId)
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setApplications(prev => prev.map(app => 
+        app.id === applicationId 
+          ? { ...app, generated_application: updatedText }
+          : app
+      ));
+      
+      // Update selected app if it's the one being edited
+      if (selectedApp?.id === applicationId) {
+        setSelectedApp({ ...selectedApp, generated_application: updatedText });
+      }
+
       toast({
-        title: 'Kein Inhalt verfügbar',
-        description: 'Für dieses Dokument ist kein generierter Inhalt verfügbar.',
+        title: 'Änderungen gespeichert',
+        description: 'Deine Bearbeitung wurde erfolgreich gespeichert.',
+      });
+    } catch (error) {
+      console.error('Error updating application:', error);
+      toast({
+        title: 'Fehler beim Speichern',
+        description: 'Die Änderungen konnten nicht gespeichert werden.',
         variant: 'destructive',
       });
-      return;
     }
-
-    const cleanJobTitle = app.job_title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
-    const cleanCompany = app.company_name.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
-    const date = new Date(app.created_at).toLocaleDateString('de-DE').replace(/\./g, '-');
-
-    const filename = `Bewerbung_${cleanJobTitle}_${cleanCompany}_${date}.txt`;
-
-    const blob = new Blob([app.generated_application], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    toast({
-      title: 'Download erfolgreich',
-      description: 'Deine Bewerbung wurde heruntergeladen.',
-    });
   };
 
   const filteredAndSortedApplications = applications
@@ -245,110 +268,161 @@ export default function Documents() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredAndSortedApplications.map((app) => (
-                <Card key={app.id} className="hover:shadow-lg transition-shadow duration-200">
-                  <CardHeader className="pb-3">
+            <div className="space-y-3">
+              {filteredAndSortedApplications.map((app, index) => (
+                <Card 
+                  key={app.id} 
+                  className="group hover:shadow-lg transition-all duration-300 cursor-pointer border-border/50 hover:bg-accent/30"
+                >
+                  <CardContent className="pt-6">
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg line-clamp-2 mb-1">
-                          {app.job_title}
-                        </CardTitle>
-                        <CardDescription className="flex items-center space-x-1">
-                          <Building2 className="h-4 w-4" />
-                          <span className="line-clamp-1">{app.company_name}</span>
-                        </CardDescription>
+                      <div className="flex items-start gap-3 flex-1">
+                        <div className="p-2 rounded-lg flex-shrink-0 bg-green-100 text-green-600">
+                          <FileText className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-foreground group-hover:text-primary transition-colors text-lg mb-1">
+                                {app.job_title}
+                              </h4>
+                              <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
+                                <Building2 className="h-4 w-4" />
+                                {app.company_name}
+                              </p>
+                              <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground mb-3">
+                                <span className="px-2 py-1 rounded-full bg-green-100 text-green-600">
+                                  <CheckCircle className="h-3 w-3 inline mr-1" />
+                                  Gespeichert
+                                </span>
+                                {app.generated_application && (
+                                  <span className="px-2 py-1 rounded-full bg-amber-100 text-amber-600 font-medium">
+                                    Bewerbung generiert
+                                  </span>
+                                )}
+                                {app.applicant_info && app.job_info && (
+                                  <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-600 font-medium">
+                                    <FileText className="h-3 w-3 inline mr-1" />
+                                    PDF Design verfügbar
+                                  </span>
+                                )}
+                                {app.language && app.language !== 'de' && (
+                                  <span className="px-2 py-1 rounded-full bg-purple-100 text-purple-600">
+                                    {app.language.toUpperCase()}
+                                  </span>
+                                )}
+                                {app.job_url && (
+                                  <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                                    <ExternalLink className="h-3 w-3 inline mr-1" />
+                                    Job-Link
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <Button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedApp(app);
+                                  }}
+                                  variant="outline"
+                                  size="sm"
+                                  className="flex-1"
+                                  disabled={!app.generated_application}
+                                >
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  Anzeigen
+                                </Button>
+                                <Button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    downloadApplication(app);
+                                  }}
+                                  size="sm"
+                                  className="flex-1"
+                                  disabled={!app.generated_application}
+                                >
+                                  <Download className="h-4 w-4 mr-1" />
+                                  Download
+                                </Button>
+                                <Button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteApplication(app.id);
+                                  }}
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0 ml-4">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Clock className="h-3 w-3" />
+                                <span>
+                                  {new Date(app.created_at).toLocaleDateString('de-DE', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: '2-digit'
+                                  })}
+                                </span>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {new Date(app.created_at).toLocaleTimeString('de-DE', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <Badge variant="outline" className="ml-2">
-                        {app.language?.toUpperCase() || 'DE'}
-                      </Badge>
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center text-sm text-muted-foreground">
-                      <Calendar className="h-4 w-4 mr-2" />
-                      <span>
-                        {new Date(app.created_at).toLocaleDateString('de-DE', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        onClick={() => setSelectedApp(app)}
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        disabled={!app.generated_application}
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        Anzeigen
-                      </Button>
-                      <Button
-                        onClick={() => downloadApplication(app)}
-                        size="sm"
-                        className="flex-1"
-                        disabled={!app.generated_application}
-                      >
-                        <Download className="h-4 w-4 mr-1" />
-                        Download
-                      </Button>
-                      <Button
-                        onClick={() => deleteApplication(app.id)}
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    {!app.generated_application && (
-                      <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2">
-                        Kein generierter Inhalt verfügbar
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               ))}
             </div>
           )}
 
-          {/* Document Preview Modal */}
-          {selectedApp && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-              <Card className="max-w-4xl max-h-[90vh] w-full">
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle>{selectedApp.job_title}</CardTitle>
-                    <CardDescription>{selectedApp.company_name}</CardDescription>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      onClick={() => downloadApplication(selectedApp)}
-                      size="sm"
-                    >
-                      <Download className="h-4 w-4 mr-1" />
-                      Download
-                    </Button>
+          {/* Document Preview Modal with Full Design */}
+          {selectedApp && selectedApp.generated_application && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+              <div className="max-w-5xl w-full my-8">
+                <Card className="w-full shadow-2xl">
+                  <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/30">
+                    <div>
+                      <CardTitle className="text-2xl">{selectedApp.job_title}</CardTitle>
+                      <CardDescription className="text-base mt-1">{selectedApp.company_name}</CardDescription>
+                    </div>
                     <Button
                       onClick={() => setSelectedApp(null)}
-                      variant="outline"
-                      size="sm"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
                     >
-                      Schließen
+                      <X className="h-5 w-5" />
                     </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="overflow-auto max-h-[60vh]">
-                  <div className="whitespace-pre-wrap font-mono text-sm bg-muted/50 rounded p-4">
-                    {selectedApp.generated_application || 'Kein Inhalt verfügbar'}
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <CoverLetterPreview
+                      letterText={selectedApp.generated_application}
+                      applicantInfo={selectedApp.applicant_info || undefined}
+                      jobInfo={selectedApp.job_info || {
+                        jobtitel: selectedApp.job_title,
+                        arbeitgeber: selectedApp.company_name,
+                        ort: undefined
+                      }}
+                      date={selectedApp.date_generated || new Date(selectedApp.created_at).toLocaleDateString('de-DE', { 
+                        day: '2-digit', 
+                        month: 'long', 
+                        year: 'numeric' 
+                      })}
+                      onSave={(editedText) => updateApplication(selectedApp.id, editedText)}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           )}
 

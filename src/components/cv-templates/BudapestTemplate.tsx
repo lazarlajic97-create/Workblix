@@ -213,10 +213,9 @@ export const BudapestTemplate: React.FC<BudapestTemplateProps> = ({ profile }) =
           {profile.first_name} {profile.last_name}
         </div>
         
-        {/* We can derive title from first experience or make it configurable */}
-        {profile.experience && profile.experience.length > 0 && (
+        {(profile.professional_title || (profile.experience && profile.experience.length > 0)) && (
           <div style={styles.title}>
-            {profile.experience[0].position}
+            {profile.professional_title || profile.experience[0].position}
           </div>
         )}
 
